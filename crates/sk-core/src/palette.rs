@@ -5,6 +5,7 @@ use crate::color::{
     contrast_ratio, delta_e_ok, normalize_hue_deg, shortest_hue_delta_deg, ColorError,
     ContrastThresholds, Oklab, Oklch, Rgb8,
 };
+use crate::scheduler::{SchedulerConfig, SchedulerError};
 use crate::season::{season_state, Season, SeasonConfig, SeasonError};
 use crate::solar::{
     solar_day_index_at, solar_day_summary_for_index, solar_position, Coordinates, PolarState,
@@ -34,6 +35,8 @@ pub enum ModelConfigError {
     Color(#[from] ColorError),
     #[error(transparent)]
     Season(#[from] SeasonError),
+    #[error(transparent)]
+    Scheduler(#[from] SchedulerError),
     #[error("invalid day-phase configuration: {0}")]
     InvalidDayPhase(&'static str),
     #[error("failed to parse model configuration: {0}")]
@@ -123,6 +126,8 @@ struct RawModelToml {
     contrast: ContrastThresholds,
     day_phase: DayPhaseConfig,
     season: SeasonConfig,
+    #[serde(default)]
+    scheduler: SchedulerConfig,
 }
 
 #[derive(Deserialize)]
@@ -131,13 +136,15 @@ struct RawModelSolar {
     event_angles: SolarEventAngles,
 }
 
-/// Complete tunable solar, day-phase, season, and contrast configuration (`data/model.toml`).
+/// Complete tunable solar, day-phase, season, contrast, and scheduler configuration (`data/model.toml`).
 #[derive(Copy, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct ModelConfig {
     pub event_angles: SolarEventAngles,
     pub day_phase: DayPhaseConfig,
     pub season: SeasonConfig,
     pub contrast: ContrastThresholds,
+    #[serde(default)]
+    pub scheduler: SchedulerConfig,
 }
 
 impl ModelConfig {
@@ -146,6 +153,7 @@ impl ModelConfig {
         self.day_phase.validate(&self.event_angles)?;
         self.season.validate()?;
         self.contrast.validate()?;
+        self.scheduler.validate()?;
         Ok(())
     }
 
@@ -157,6 +165,7 @@ impl ModelConfig {
             day_phase: raw.day_phase,
             season: raw.season,
             contrast: raw.contrast,
+            scheduler: raw.scheduler,
         };
         cfg.validate()?;
         Ok(cfg)

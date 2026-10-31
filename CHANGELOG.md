@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **T09 Daemon & scheduler:** Pure predicted-step daemon sleep solver (`predict_next_step_sleep_secs`, `compute_pause_sleep_secs`, `SchedulerConfig`) in `crates/sk-core/src/scheduler.rs`, configured by tunable `[scheduler]` thresholds (`min_sleep_secs = 60`, `max_sleep_secs = 1800`, `step_threshold = 0.008`, `probe_step_secs = 300`) in `data/model.toml`.
+- Zero-write unchanged/paused `daemon_tick`, advisory `flock`-backed `DaemonPidGuard` / `probe_running_daemon_pid` (`daemon.pid`), `set_pause` / `clear_pause` (`paused_until` in `state.json` and extended `current.gen` freshness leases), and human duration parser `parse_pause_duration_secs` in `crates/sk-store/src/{store,moment,paths,config,error}.rs`.
+- ADR 002 (`docs/decisions/002-signal-hook.md`) adopting minimal `signal-hook` (`default-features = false`) in `shiki-term` for safe `SIGHUP`/`SIGTERM`/`SIGINT` self-pipe wakeups (`SignalWakePipe`), plus `shiki-term pause [--for <DURATION>]`, `shiki-term resume`, and `shiki-term daemon install|uninstall|status|run` (`crates/shiki-term/src/{daemon,main}.rs`).
+- Verified macOS `launchd` (`~/Library/LaunchAgents/io.github.quiinthieu.shiki-term.plist`) and Linux/WSL `systemd --user` (`${XDG_CONFIG_HOME:-~/.config}/systemd/user/shiki-term.service`) notes (`docs/terminals/daemon-user-units.md`), reference unit templates (`packaging/launchd/io.github.quiinthieu.shiki-term.plist`, `packaging/systemd/shiki-term.service`), golden unit snapshots, `/usr/bin/plutil -lint` validation, directory-tree round-trip tests, fake-clock 24-hour wake sweeps, and live child-daemon `SIGHUP`/`SIGTERM` integration tests (`crates/sk-core/tests/scheduler_sleep.rs`, `crates/sk-store/tests/daemon_store.rs`, `crates/shiki-term/tests/daemon_cli.rs`).
+
 ## [0.1.0] - 2026-10-31
 
 ### Added

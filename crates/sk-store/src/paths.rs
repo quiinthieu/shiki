@@ -168,6 +168,11 @@ impl ShikiPaths {
         self.runtime_dir.join("shiki.lock")
     }
 
+    #[must_use]
+    pub fn daemon_pid_file(&self) -> PathBuf {
+        self.runtime_dir.join("daemon.pid")
+    }
+
     pub fn ensure_dirs(&self) -> Result<(), StoreError> {
         for dir in [
             self.config_dir.as_path(),

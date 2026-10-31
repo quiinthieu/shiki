@@ -4,7 +4,76 @@ use crate::error::StoreError;
 use jiff::civil;
 use jiff::tz::TimeZone;
 use jiff::Timestamp;
-use sk_core::time::{UtcInstant, SECS_PER_HOUR, SECS_PER_MINUTE};
+use sk_core::time::{UtcInstant, SECS_PER_DAY, SECS_PER_HOUR, SECS_PER_MINUTE};
+
+const MAX_PAUSE_DURATION_SECS: i64 = 365 * SECS_PER_DAY;
+
+/// Parses a human duration string (`30s`, `45m`, `2h`, `1h30m`, `1d`) into positive whole seconds
+/// for `pause --for <DURATION>` (`PLAN.md` §6 & §10 T09).
+pub fn parse_pause_duration_secs(input: &str) -> Result<i64, StoreError> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Err(StoreError::InvalidPauseDuration(input.to_string()));
+    }
+
+    let bytes = trimmed.as_bytes();
+    let mut idx = 0_usize;
+    let mut total_secs = 0_i64;
+    let mut saw_segment = false;
+
+    while idx < bytes.len() {
+        while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
+            idx += 1;
+        }
+        if idx >= bytes.len() {
+            break;
+        }
+
+        let num_start = idx;
+        while idx < bytes.len() && bytes[idx].is_ascii_digit() {
+            idx += 1;
+        }
+        if idx == num_start {
+            return Err(StoreError::InvalidPauseDuration(input.to_string()));
+        }
+        let qty: i64 = trimmed[num_start..idx]
+            .parse()
+            .map_err(|_| StoreError::InvalidPauseDuration(input.to_string()))?;
+
+        while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
+            idx += 1;
+        }
+        let unit_start = idx;
+        while idx < bytes.len() && bytes[idx].is_ascii_alphabetic() {
+            idx += 1;
+        }
+        if idx == unit_start {
+            return Err(StoreError::InvalidPauseDuration(input.to_string()));
+        }
+
+        let unit = trimmed[unit_start..idx].to_ascii_lowercase();
+        let mult = match unit.as_str() {
+            "s" | "sec" | "secs" | "second" | "seconds" => 1_i64,
+            "m" | "min" | "mins" | "minute" | "minutes" => SECS_PER_MINUTE,
+            "h" | "hr" | "hrs" | "hour" | "hours" => SECS_PER_HOUR,
+            "d" | "day" | "days" => SECS_PER_DAY,
+            _ => return Err(StoreError::InvalidPauseDuration(input.to_string())),
+        };
+
+        let seg_secs = qty
+            .checked_mul(mult)
+            .ok_or_else(|| StoreError::InvalidPauseDuration(input.to_string()))?;
+        total_secs = total_secs
+            .checked_add(seg_secs)
+            .ok_or_else(|| StoreError::InvalidPauseDuration(input.to_string()))?;
+        saw_segment = true;
+    }
+
+    if !saw_segment || total_secs <= 0 || total_secs > MAX_PAUSE_DURATION_SECS {
+        return Err(StoreError::InvalidPauseDuration(input.to_string()));
+    }
+    Ok(total_secs)
+}
 
 fn parse_ymd(input: &str) -> Result<(i32, u8, u8), StoreError> {
     let trimmed = input.trim();

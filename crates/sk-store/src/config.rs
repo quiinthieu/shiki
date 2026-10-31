@@ -9,15 +9,18 @@ use serde::{Deserialize, Serialize};
 use sk_core::color::{ContrastThresholds, WCAG_MAX_CONTRAST_RATIO};
 use sk_core::location::{LocationError, LocationMode, ManualLocation, ResolvedLocation, TzDb};
 use sk_core::palette::ModelConfig;
+use sk_core::scheduler::{
+    DEFAULT_DAEMON_MAX_SLEEP_SECS, DEFAULT_DAEMON_STEP_THRESHOLD, MIN_DAEMON_SLEEP_SECS,
+};
 use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::ops::Range;
 
 pub const DEFAULT_PALETTE_NAME: &str = "shiki";
-pub const DEFAULT_STEP_THRESHOLD: f64 = 0.008;
-pub const DEFAULT_HOOK_MIN_INTERVAL_SECS: u64 = 60;
-pub const DEFAULT_MAX_SLEEP_SECS: u64 = 1_800;
+pub const DEFAULT_STEP_THRESHOLD: f64 = DEFAULT_DAEMON_STEP_THRESHOLD;
+pub const DEFAULT_HOOK_MIN_INTERVAL_SECS: u64 = MIN_DAEMON_SLEEP_SECS;
+pub const DEFAULT_MAX_SLEEP_SECS: u64 = DEFAULT_DAEMON_MAX_SLEEP_SECS;
 
 pub const VALID_CONFIG_KEYS: &str = "palette, step_threshold, hook_min_interval_secs, max_sleep_secs, location.mode, location.latitude, location.longitude, location.timezone, contrast.fg_bg_min_ratio, contrast.ansi_bg_min_ratio, delivery.tty_broadcast, delivery.tmux_passthrough";
 

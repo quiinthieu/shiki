@@ -65,4 +65,17 @@ pub enum StoreError {
 
     #[error("invalid date/time query: {0}")]
     InvalidMomentQuery(String),
+
+    #[error("invalid pause duration '{0}' (expected positive duration such as '30m', '2h', '1h30m', or '90s', up to '365d')")]
+    InvalidPauseDuration(String),
+
+    #[error("daemon is already running{}", format_optional_pid(*pid))]
+    DaemonAlreadyRunning { pid: Option<u32> },
+}
+
+fn format_optional_pid(pid: Option<u32>) -> String {
+    match pid {
+        Some(p) => format!(" (pid {p})"),
+        None => String::new(),
+    }
 }

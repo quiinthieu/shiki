@@ -164,7 +164,7 @@ Tick `[x]` when done. **M1 is the MVP**: new prompts drift via the hook. Everyth
   *AC:* real shells emit on the first prompt and afterwards only on change. The rc round-trips byte for byte. Latency measured. `v0.1.0` builds.
 
 ### M2 Every session, cheaply
-- [ ] **T09 Daemon & scheduler.** Predicted-step sleep, `pause`/`resume`, launchd/systemd user units *(verify paths)*.
+- [x] **T09 Daemon & scheduler.** Predicted-step sleep, `pause`/`resume`, launchd/systemd user units *(verify paths)*.
   *AC:* a fake-clock day's wakes respect §7. No writes when unchanged. Install/uninstall round-trips.
 - [ ] **T10 tty broadcast & tmux.** Enumerate the uid's ttys, single-write delivery, tmux passthrough option.
   *AC:* a pty pair gets the exact bytes. Other users' ttys are never opened. A tmux pane's colour changes.

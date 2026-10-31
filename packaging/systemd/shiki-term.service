@@ -1,0 +1,13 @@
+[Unit]
+Description=Shiki circadian terminal colour daemon
+Documentation=https://github.com/quiinthieu/shiki
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/shiki-term daemon run
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

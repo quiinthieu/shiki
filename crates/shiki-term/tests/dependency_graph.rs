@@ -140,6 +140,7 @@ fn dependency_graph_matches_plan_spec() {
         "serde_yaml",
         "yaml-rust2",
         "saphyr",
+        "signal-hook",
     ]
     .into_iter()
     .collect();
@@ -289,6 +290,7 @@ fn sk_core_has_no_impure_dependencies() {
         "jiff",
         "plist",
         "rustix",
+        "signal-hook",
         "tempfile",
         "time",
     ]
