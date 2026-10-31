@@ -36,3 +36,30 @@ fg_bg_min_ratio = 4.5
 # Source: W3C WCAG 2.2 SC 1.4.3 large-scale text / SC 1.4.11 Non-text Contrast (Level AA):
 # https://www.w3.org/TR/WCAG22/#non-text-contrast
 ansi_bg_min_ratio = 3.0
+
+[day_phase]
+# Piecewise-linear day phase `d` keyframes in [0.0, 1.0] aligned to `[solar.event_angles]`
+# (`night` -> astronomical, nautical, civil twilight -> `golden` -> `day`, `PLAN.md` §4; tunable).
+night_d = 0.0
+nautical_d = 0.18
+civil_d = 0.38
+sunrise_sunset_d = 0.58
+golden_d = 0.80
+day_d = 1.0
+
+# Upper cap (degrees, tunable) for `noon_elevation` normalization (`PLAN.md` §4).
+# When `noon_elevation >= golden_hour_deg`, full `day` (`d = 1.0`) is reached at
+# `min(noon_elevation, day_full_elevation_deg)` so low winter suns still reach `day` at noon while
+# high summer suns reach `day` mid-morning.
+day_full_elevation_deg = 24.0
+
+# True-solar hour-angle half-width (degrees, tunable; 8 deg = 32 solar minutes) around solar noon
+# and solar nadir used to cross-fade dawn and dusk smoothly during polar twilight / midnight sun.
+culmination_blend_half_width_deg = 8.0
+
+[season]
+# Latitude threshold (degrees, tunable) across which seasonal amplitude fades smoothly to 0 at the
+# equator (`PLAN.md` §4). Default is Earth's J2000.0 mean obliquity of the ecliptic (the Tropics of
+# Cancer and Capricorn, 23°26'21.448").
+# Source: Jean Meeus, Astronomical Algorithms (2nd ed., Ch. 22) / IAU J2000.0 obliquity.
+equator_fade_latitude_deg = 23.439291

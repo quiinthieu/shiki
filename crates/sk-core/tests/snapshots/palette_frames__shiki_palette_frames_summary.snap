@@ -1,0 +1,11 @@
+---
+source: crates/sk-core/tests/palette_frames.rs
+expression: summary
+---
+tokyo_spring_dawn: t=2026-03-20T20:35:00Z phase=civil_dawn season=spring d=0.511 s=0.001 bg=#27242b fg=#ece4e8 sel_bg=#3f3a45 ansi1=#e88083 ansi2=#85d4a3 fixup=0
+tokyo_summer_noon: t=2026-06-22T02:45:00Z phase=day season=summer d=1.000 s=0.252 bg=#304355 fg=#f5f8fc sel_bg=#1d2a37 ansi1=#f4928e ansi2=#90e4b4 fixup=0
+tokyo_autumn_dusk: t=2026-09-23T08:45:00Z phase=civil_dusk season=autumn d=0.527 s=0.501 bg=#31201f fg=#f0e1de sel_bg=#4d3332 ansi1=#eb827d ansi2=#86d19d fixup=0
+tokyo_winter_night: t=2026-12-22T15:00:00Z phase=night season=winter d=0.000 s=0.752 bg=#0c1118 fg=#d7e0ec sel_bg=#1d2b3c ansi1=#de727a ansi2=#78ca9e fixup=0
+sydney_winter_noon_jun: t=2026-06-22T02:00:00Z phase=day season=winter d=1.000 s=0.752 bg=#35414e fg=#f6f8fb sel_bg=#202831 ansi1=#f29294 ansi2=#90e4b4 fixup=0
+north_2026: frames=52560 fixed=0 worst_overall=(2026-06-05T21:40:00Z ansi[1] ratio=4.51 min=3.00 d=1.000 s=0.209) worst_text=(selection ratio=8.68)
+south_2026: frames=52560 fixed=0 worst_overall=(2026-12-07T04:10:00Z ansi[1] ratio=4.51 min=3.00 d=1.000 s=0.208) worst_text=(selection ratio=8.68)
