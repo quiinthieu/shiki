@@ -125,3 +125,24 @@ fn pty_pair_spawn_session_command_attaches_controlling_terminal() {
         "ctty-attached"
     );
 }
+
+#[test]
+fn pty_pair_consecutive_read_until_preserves_trailing_bytes_from_single_write() {
+    let mut pair = PtyPair::open_raw().expect("open raw PTY pair");
+    pair.write_to_replica(b"<STEP2>\n\x1b]11;rgb:14/16/1b\x1b\\<<SHIKI_PROMPT:0>> ")
+        .expect("single coalesced write to replica");
+
+    let step = pair
+        .read_until(b"<STEP2>", TIMEOUT)
+        .expect("read step barrier");
+    assert_eq!(step, b"<STEP2>");
+
+    let prompt = pair
+        .read_until(b"<<SHIKI_PROMPT:0>> ", TIMEOUT)
+        .expect("read buffered prompt bytes from same write");
+    assert_eq!(prompt, b"\n\x1b]11;rgb:14/16/1b\x1b\\<<SHIKI_PROMPT:0>> ");
+
+    pair.close_replica();
+    let eof = pair.read_to_eof(TIMEOUT).expect("drain EOF");
+    assert!(eof.is_empty());
+}

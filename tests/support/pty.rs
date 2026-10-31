@@ -12,6 +12,7 @@ use rustix::fs::{fcntl_getfl, fcntl_setfl, open, Mode, OFlags};
 use rustix::io::{fcntl_setfd, Errno, FdFlags};
 use rustix::pty::{grantpt, openpt, ptsname, unlockpt, OpenptFlags};
 use rustix::termios::{tcgetattr, tcsetattr, tcsetwinsize, OptionalActions, Winsize};
+use std::cell::RefCell;
 use std::ffi::OsStr;
 use std::io;
 use std::os::unix::ffi::OsStrExt;
@@ -71,6 +72,7 @@ pub struct PtyPair {
     controller: OwnedFd,
     replica: Option<OwnedFd>,
     replica_path: PathBuf,
+    rx_buf: RefCell<Vec<u8>>,
 }
 
 impl PtyPair {
@@ -124,6 +126,7 @@ impl PtyPair {
             controller,
             replica: Some(replica),
             replica_path,
+            rx_buf: RefCell::new(Vec::new()),
         })
     }
 
@@ -154,28 +157,34 @@ impl PtyPair {
     }
 
     pub fn read_exact_with_timeout(&self, len: usize, timeout: Duration) -> io::Result<Vec<u8>> {
-        let mut out = Vec::with_capacity(len);
+        let mut out = std::mem::take(&mut *self.rx_buf.borrow_mut());
+        if out.len() < len {
+            out.reserve(len - out.len());
+        }
         self.read_loop(timeout, &mut out, |buf| buf.len() >= len)?;
         if out.len() < len {
+            let captured = out.len();
+            *self.rx_buf.borrow_mut() = out;
             return Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
-                format!(
-                    "PTY reached EOF after {} of {len} expected bytes",
-                    out.len()
-                ),
+                format!("PTY reached EOF after {captured} of {len} expected bytes"),
             ));
         }
-        out.truncate(len);
+        let remainder = out.split_off(len);
+        *self.rx_buf.borrow_mut() = remainder;
         Ok(out)
     }
 
     pub fn read_until(&self, needle: &[u8], timeout: Duration) -> io::Result<Vec<u8>> {
         assert!(!needle.is_empty(), "read_until needle must not be empty");
-        let mut out = Vec::new();
+        let mut out = std::mem::take(&mut *self.rx_buf.borrow_mut());
         self.read_loop(timeout, &mut out, |buf| {
             buf.windows(needle.len()).any(|window| window == needle)
         })?;
-        if !out.windows(needle.len()).any(|window| window == needle) {
+        let Some(pos) = out
+            .windows(needle.len())
+            .position(|window| window == needle)
+        else {
             return Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
                 format!(
@@ -184,13 +193,16 @@ impl PtyPair {
                     String::from_utf8_lossy(&out)
                 ),
             ));
-        }
+        };
+        let split_at = pos + needle.len();
+        let remainder = out.split_off(split_at);
+        *self.rx_buf.borrow_mut() = remainder;
         Ok(out)
     }
 
     pub fn read_to_eof(&mut self, timeout: Duration) -> io::Result<Vec<u8>> {
         self.close_replica();
-        let mut out = Vec::new();
+        let mut out = std::mem::take(self.rx_buf.get_mut());
         self.read_loop(timeout, &mut out, |_| false)?;
         Ok(out)
     }
