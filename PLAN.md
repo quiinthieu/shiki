@@ -158,7 +158,7 @@ Tick `[x]` when done. **M1 is the MVP**: new prompts drift via the hook. Everyth
 - [x] **T05 Colour math.** OKLab/OKLCH, gamut map, WCAG, ΔE_OK. *AC:* oracle and round-trip tests pass. `contrast(#000,#fff) = 21`.
 - [x] **T06 Palette & frames.** Schema with file/line errors, `d`/`s`, OKLCH blend, fix-up, the `shiki` palette, `palette check`.
   *AC:* property tests pass over a year at 10-minute steps in both hemispheres. `palette check` prints the worst moment.
-- [ ] **T07 OSC & CLI core.** Encoder, `apply`, `reset`, `now`, `preview` (swatches + sample text, 256-colour fallback, `NO_COLOR`), `config`, store.
+- [x] **T07 OSC & CLI core.** Encoder, `apply`, `reset`, `now`, `preview` (swatches + sample text, 256-colour fallback, `NO_COLOR`), `config`, store.
   *AC:* golden OSC bytes. `preview` never emits OSC 4/10/11. `reset` emits 104/110/111/112.
 - [ ] **T08 Shell hook (MVP release).** `hook zsh|bash|fish`, `_emit --if-stale`, generation file, `hook install --write-rc`/`uninstall`.
   *AC:* real shells emit on the first prompt and afterwards only on change. The rc round-trips byte for byte. Latency measured. `v0.1.0` builds.
