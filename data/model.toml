@@ -1,0 +1,26 @@
+# Tunable parameters for Shiki's solar and colour model (`PLAN.md` §0 #9, §4).
+#
+# Do not invent numbers: every threshold here cites its published astronomical or perceptual source
+# and is marked tunable when intended for user/model calibration.
+
+[solar.event_angles]
+# Sun-center geometric horizon altitude for sunrise and sunset (degrees, tunable).
+# Default -0.833 deg combines ~34' standard atmospheric refraction and ~16' solar semi-diameter
+# (zenith = 90.833 deg).
+# Sources:
+# - NOAA GML Solar Calculation Details: https://gml.noaa.gov/grad/solcalc/calcdetails.html
+# - SunCalc (`mourner/suncalc`): `[-0.833, 'sunrise', 'sunset']`
+sunrise_sunset_deg = -0.833
+
+# Civil, nautical, and astronomical twilight sun-center altitudes (degrees, tunable).
+# Defaults follow IAU / NOAA / SunCalc conventions (-6, -12, -18 deg).
+# Sources:
+# - NOAA GML Glossary & Calculation Details: https://gml.noaa.gov/grad/solcalc/calcdetails.html
+# - SunCalc (`mourner/suncalc`): `-6` (`dawn`/`dusk`), `-12` (`nauticalDawn`/`nauticalDusk`), `-18` (`nightEnd`/`night`)
+civil_twilight_deg = -6.0
+nautical_twilight_deg = -12.0
+astronomical_twilight_deg = -18.0
+
+# Golden-hour upper sun-center altitude threshold (degrees, tunable).
+# Source: SunCalc (`mourner/suncalc`): `[6, 'goldenHourEnd', 'goldenHour']`
+golden_hour_deg = 6.0

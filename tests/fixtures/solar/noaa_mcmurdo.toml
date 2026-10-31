@@ -1,0 +1,198 @@
+# NOAA GML Solar Calculator reference fixture: McMurdo Station, Antarctica
+# Capture URL: https://gml.noaa.gov/grad/solcalc/
+# Calculation details & accuracy spec: https://gml.noaa.gov/grad/solcalc/calcdetails.html
+# Capture date: 2026-10-31
+#
+# Documented tolerances (NOAA calcdetails.html & 2-decimal UI display precision):
+# - elevation_deg: +/- 0.02 deg
+# - azimuth_deg: +/- 0.05 deg
+# - declination_deg: +/- 0.02 deg
+# - equation_of_time_min: +/- 0.02 min
+# - solar_noon_secs: +/- 30 s
+# - sunrise_sunset_secs: +/- 600 s (NOAA: 1 min within +/-72 deg lat, 10 min outside)
+
+capture_url = "https://gml.noaa.gov/grad/solcalc/"
+details_url = "https://gml.noaa.gov/grad/solcalc/calcdetails.html"
+capture_date = "2026-10-31"
+city = "McMurdo Station, Antarctica"
+hemisphere_ns = "south"
+region = "polar"
+latitude_deg = -77.8419
+longitude_deg = 166.6863
+standard_tz_offset_hours = 12
+
+[tolerances]
+elevation_deg = 0.02
+azimuth_deg = 0.05
+declination_deg = 0.02
+equation_of_time_min = 0.02
+solar_noon_secs = 30
+sunrise_sunset_secs = 600
+
+[[days]]
+date = "2026-03-20"
+season_anchor = "march_equinox"
+polar_state = "normal"
+solar_noon_utc = "2026-03-20T01:00:58Z"
+noaa_noonbox_local = "13:00:58"
+noon_elevation_deg = 12.454040
+sunrise_utc = "2026-03-19T18:38:57Z"
+noaa_risebox_local = "06:39"
+sunset_utc = "2026-03-20T07:18:49Z"
+noaa_setbox_local = "19:19"
+
+[[days]]
+date = "2026-06-21"
+season_anchor = "june_solstice"
+polar_state = "polar_night"
+solar_noon_utc = "2026-06-21T00:54:52Z"
+noaa_noonbox_local = "12:54:52"
+noon_elevation_deg = -11.250771
+
+[[days]]
+date = "2026-09-22"
+season_anchor = "september_equinox"
+polar_state = "normal"
+solar_noon_utc = "2026-09-22T00:46:20Z"
+noaa_noonbox_local = "12:46:20"
+noon_elevation_deg = 11.854239
+sunrise_utc = "2026-09-21T18:39:19Z"
+noaa_risebox_local = "06:39"
+sunset_utc = "2026-09-22T06:56:42Z"
+noaa_setbox_local = "18:57"
+
+[[days]]
+date = "2026-12-21"
+season_anchor = "december_solstice"
+polar_state = "polar_day"
+solar_noon_utc = "2026-12-21T00:50:51Z"
+noaa_noonbox_local = "12:50:51"
+noon_elevation_deg = 35.615710
+
+[[samples]]
+instant_utc = "2026-03-19T13:30:00Z"
+noaa_elbox = "-11.62"
+apparent_elevation_deg = -11.617389
+azimuth_deg = 172.587893
+declination_deg = -0.413950
+equation_of_time_min = -7.709624
+
+[[samples]]
+instant_utc = "2026-03-19T19:30:00Z"
+noaa_elbox = "2.13"
+apparent_elevation_deg = 2.131549
+azimuth_deg = 82.950131
+declination_deg = -0.315096
+equation_of_time_min = -7.636040
+
+[[samples]]
+instant_utc = "2026-03-20T00:15:00Z"
+noaa_elbox = "12.22"
+apparent_elevation_deg = 12.221899
+azimuth_deg = 11.724195
+declination_deg = -0.236843
+equation_of_time_min = -7.577688
+
+[[samples]]
+instant_utc = "2026-03-20T06:45:00Z"
+noaa_elbox = "1.32"
+apparent_elevation_deg = 1.323335
+azimuth_deg = 273.822790
+declination_deg = -0.129770
+equation_of_time_min = -7.497704
+
+[[samples]]
+instant_utc = "2026-06-20T13:30:00Z"
+noaa_elbox = "dark"
+apparent_elevation_deg = -35.426563
+azimuth_deg = 170.101102
+declination_deg = 23.436009
+equation_of_time_min = -1.620216
+
+[[samples]]
+instant_utc = "2026-06-20T19:30:00Z"
+noaa_elbox = "dark"
+apparent_elevation_deg = -21.046361
+azimuth_deg = 76.333674
+declination_deg = 23.437146
+equation_of_time_min = -1.674666
+
+[[samples]]
+instant_utc = "2026-06-21T00:15:00Z"
+noaa_elbox = "-11.42"
+apparent_elevation_deg = -11.422482
+azimuth_deg = 9.348915
+declination_deg = 23.437740
+equation_of_time_min = -1.717758
+
+[[samples]]
+instant_utc = "2026-06-21T06:45:00Z"
+noaa_elbox = "dark"
+apparent_elevation_deg = -22.343284
+azimuth_deg = 277.643948
+declination_deg = 23.438117
+equation_of_time_min = -1.776700
+
+[[samples]]
+instant_utc = "2026-09-21T13:30:00Z"
+noaa_elbox = "-12.47"
+apparent_elevation_deg = -12.470032
+azimuth_deg = 168.813652
+declination_deg = 0.561804
+equation_of_time_min = 6.929154
+
+[[samples]]
+instant_utc = "2026-09-21T19:30:00Z"
+noaa_elbox = "2.13"
+apparent_elevation_deg = 2.131031
+azimuth_deg = 79.202743
+declination_deg = 0.464599
+equation_of_time_min = 7.017722
+
+[[samples]]
+instant_utc = "2026-09-22T00:15:00Z"
+noaa_elbox = "11.73"
+apparent_elevation_deg = 11.732770
+azimuth_deg = 7.956708
+declination_deg = 0.387631
+equation_of_time_min = 7.087774
+
+[[samples]]
+instant_utc = "2026-09-22T06:45:00Z"
+noaa_elbox = "0.3"
+apparent_elevation_deg = 0.295419
+azimuth_deg = 270.321261
+declination_deg = 0.282287
+equation_of_time_min = 7.183538
+
+[[samples]]
+instant_utc = "2026-12-20T13:30:00Z"
+noaa_elbox = "11.51"
+apparent_elevation_deg = 11.514777
+azimuth_deg = 170.847353
+declination_deg = -23.431161
+equation_of_time_min = 2.387091
+
+[[samples]]
+instant_utc = "2026-12-20T19:30:00Z"
+noaa_elbox = "24.96"
+apparent_elevation_deg = 24.963613
+azimuth_deg = 85.688543
+declination_deg = -23.433474
+equation_of_time_min = 2.263415
+
+[[samples]]
+instant_utc = "2026-12-21T00:15:00Z"
+noaa_elbox = "35.45"
+apparent_elevation_deg = 35.447410
+azimuth_deg = 10.170101
+declination_deg = -23.434958
+equation_of_time_min = 2.165454
+
+[[samples]]
+instant_utc = "2026-12-21T06:45:00Z"
+noaa_elbox = "23.24"
+apparent_elevation_deg = 23.244627
+azimuth_deg = 266.293580
+declination_deg = -23.436491
+equation_of_time_min = 2.031339

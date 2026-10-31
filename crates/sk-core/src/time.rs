@@ -59,9 +59,7 @@ impl UtcInstant {
         minute: u8,
         second: u8,
     ) -> Result<Self, TimeError> {
-        if !(1..=12).contains(&month) || day < 1 || day > days_in_month(year, month) {
-            return Err(TimeError::InvalidDate { year, month, day });
-        }
+        let days = validated_days_from_civil(year, month, day)?;
         if hour >= 24 || minute >= 60 || second >= 60 {
             return Err(TimeError::InvalidTime {
                 hour,
@@ -70,7 +68,6 @@ impl UtcInstant {
             });
         }
 
-        let days = days_from_civil(year, month, day);
         let secs_of_day = i64::from(hour) * SECS_PER_HOUR
             + i64::from(minute) * SECS_PER_MINUTE
             + i64::from(second);
@@ -287,6 +284,17 @@ pub const fn days_in_month(year: i32, month: u8) -> u8 {
         }
         _ => 0,
     }
+}
+
+pub(crate) const fn validated_days_from_civil(
+    year: i32,
+    month: u8,
+    day: u8,
+) -> Result<i64, TimeError> {
+    if month < 1 || month > 12 || day < 1 || day > days_in_month(year, month) {
+        return Err(TimeError::InvalidDate { year, month, day });
+    }
+    Ok(days_from_civil(year, month, day))
 }
 
 /// Howard Hinnant's `days_from_civil`: days from `1970-01-01` in the proleptic Gregorian calendar.

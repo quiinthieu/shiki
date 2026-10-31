@@ -153,7 +153,7 @@ Tick `[x]` when done. **M1 is the MVP**: new prompts drift via the hook. Everyth
   *AC:* a lint proves `sk-core` has no `std::fs`, `SystemTime::now` or `std::env`. Sample tests pass 100× in a loop.
 
 ### M1 MVP: drift in your shell
-- [ ] **T03 Solar.** NOAA position, events, polar cases. *AC:* fixtures within the documented tolerance (capture URL and date in the header). Polar cases pass.
+- [x] **T03 Solar.** NOAA position, events, polar cases. *AC:* fixtures within the documented tolerance (capture URL and date in the header). Polar cases pass.
 - [ ] **T04 Location.** Manual lat/lon (validated, rounded), vendored tzdb + `backward`, `locate`, ADR jiff vs time. *AC:* `Asia/Saigon` = `Asia/Ho_Chi_Minh`. An unknown zone suggests `locate --set`.
 - [ ] **T05 Colour math.** OKLab/OKLCH, gamut map, WCAG, ΔE_OK. *AC:* oracle and round-trip tests pass. `contrast(#000,#fff) = 21`.
 - [ ] **T06 Palette & frames.** Schema with file/line errors, `d`/`s`, OKLCH blend, fix-up, the `shiki` palette, `palette check`.
