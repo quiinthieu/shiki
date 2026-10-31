@@ -24,3 +24,15 @@ astronomical_twilight_deg = -18.0
 # Golden-hour upper sun-center altitude threshold (degrees, tunable).
 # Source: SunCalc (`mourner/suncalc`): `[6, 'goldenHourEnd', 'goldenHour']`
 golden_hour_deg = 6.0
+
+[contrast]
+# Minimum WCAG 2.2 contrast ratio for foreground/background and selection text (tunable;
+# lowering below default requires `--i-know`, `PLAN.md` §4).
+# Source: W3C WCAG 2.2 Success Criterion 1.4.3 Contrast (Minimum) (Level AA):
+# https://www.w3.org/TR/WCAG22/#contrast-minimum
+fg_bg_min_ratio = 4.5
+
+# Minimum WCAG 2.2 contrast ratio for non-exempt ANSI palette slots (1..=7, 9..=15) vs bg (tunable).
+# Source: W3C WCAG 2.2 SC 1.4.3 large-scale text / SC 1.4.11 Non-text Contrast (Level AA):
+# https://www.w3.org/TR/WCAG22/#non-text-contrast
+ansi_bg_min_ratio = 3.0
