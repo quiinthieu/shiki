@@ -1,0 +1,6 @@
+---
+source: crates/sk-deliver/tests/pty_harness.rs
+expression: snapshot_text
+---
+byte_len = 65
+escaped = \x1b]11;rgb:14/16/1b\x1b\\\x1b]10;rgb:e6/e8/ee\x1b\\\x1b]4;1;rgb:ab/46/42\x1b\\\x1b]111\x1b\\

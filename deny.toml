@@ -32,6 +32,11 @@ confidence-threshold = 0.8
 ignore = false
 registries = []
 
+# `directories` (PLAN §3 & §6) depends on `dirs-sys` -> `option-ext` (MPL-2.0).
+[[licenses.exceptions]]
+allow = ["MPL-2.0"]
+crate = "option-ext"
+
 [bans]
 multiple-versions = "warn"
 wildcards = "allow"

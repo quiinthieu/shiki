@@ -57,3 +57,6 @@ jobs:
 
       - name: Run privacy lint
         run: ./scripts/lint-privacy.sh
+
+      - name: Run sk-core purity lint
+        run: ./scripts/lint-core-purity.sh

@@ -408,4 +408,8 @@ fn toolchain_versions_stay_in_sync() {
         ci_yml.contains("./scripts/lint-privacy.sh"),
         ".github/workflows/ci.yml must run ./scripts/lint-privacy.sh"
     );
+    assert!(
+        ci_yml.contains("./scripts/lint-core-purity.sh"),
+        ".github/workflows/ci.yml must run ./scripts/lint-core-purity.sh"
+    );
 }

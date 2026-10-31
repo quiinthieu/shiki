@@ -1,0 +1,9 @@
+# Synthetic minimal palette fixture for T02 fixture-loader and staging tests.
+# Full palette schema and contrast checks arrive in T06.
+
+name = "minimal-sample"
+fixture_only = true
+
+[night]
+bg = "#14161b"
+fg = "#e6e8ee"

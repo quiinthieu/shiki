@@ -10,6 +10,12 @@ repository.workspace = true
 
 [dependencies]
 sk-core = { workspace = true }
+directories = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+tempfile = { workspace = true }
 
 [lints]
 workspace = true
