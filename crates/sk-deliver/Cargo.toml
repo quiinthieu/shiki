@@ -10,6 +10,10 @@ repository.workspace = true
 
 [dependencies]
 sk-core = { workspace = true }
+rustix = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
 
 [lints]
 workspace = true

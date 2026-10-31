@@ -411,6 +411,8 @@ version = "0.1.0"
 dependencies = [
  "assert_cmd",
  "clap",
+ "insta",
+ "rustix",
  "serde_json",
  "sk-core",
  "sk-deliver",
@@ -439,6 +441,8 @@ dependencies = [
 name = "sk-deliver"
 version = "0.1.0"
 dependencies = [
+ "insta",
+ "rustix",
  "sk-core",
 ]
 
