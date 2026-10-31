@@ -186,6 +186,12 @@ impl DayHalf {
     }
 }
 
+impl fmt::Display for DayHalf {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// Anchor diurnal applicability in palette TOML (`"both"`, `"dawn"`, or `"dusk"`).
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -254,6 +260,12 @@ impl SolarPhase {
             Self::NauticalDusk => "nautical_dusk",
             Self::AstronomicalDusk => "astronomical_dusk",
         }
+    }
+}
+
+impl fmt::Display for SolarPhase {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 

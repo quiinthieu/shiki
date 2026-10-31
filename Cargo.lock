@@ -773,6 +773,7 @@ dependencies = [
  "insta",
  "rustix",
  "sk-core",
+ "thiserror",
 ]
 
 [[package]]
@@ -789,7 +790,9 @@ dependencies = [
  "directories",
  "insta",
  "jiff",
+ "rustix",
  "serde",
+ "serde_json",
  "sk-core",
  "tempfile",
  "thiserror",

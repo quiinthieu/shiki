@@ -726,3 +726,70 @@ impl From<Oklch> for Oklab {
         c.to_oklab()
     }
 }
+
+const XTERM_CUBE_LEVELS: [u8; 6] = [0, 95, 135, 175, 215, 255];
+
+const XTERM_ANSI16_FALLBACK: [Rgb8; 16] = [
+    Rgb8::new(0, 0, 0),
+    Rgb8::new(128, 0, 0),
+    Rgb8::new(0, 128, 0),
+    Rgb8::new(128, 128, 0),
+    Rgb8::new(0, 0, 128),
+    Rgb8::new(128, 0, 128),
+    Rgb8::new(0, 128, 128),
+    Rgb8::new(192, 192, 192),
+    Rgb8::new(128, 128, 128),
+    Rgb8::new(255, 0, 0),
+    Rgb8::new(0, 255, 0),
+    Rgb8::new(255, 255, 0),
+    Rgb8::new(0, 0, 255),
+    Rgb8::new(255, 0, 255),
+    Rgb8::new(0, 255, 255),
+    Rgb8::new(255, 255, 255),
+];
+
+/// Returns the standard xterm 256-colour sRGB entry for `index` (`0..=255`).
+///
+/// Indices `16..=231` form the fixed `6x6x6` colour cube (`[0, 95, 135, 175, 215, 255]`) and
+/// indices `232..=255` form the fixed 24-step greyscale ramp (`8 + 10 * k`).
+#[must_use]
+pub const fn xterm256_color(index: u8) -> Rgb8 {
+    if index < 16 {
+        XTERM_ANSI16_FALLBACK[index as usize]
+    } else if index < 232 {
+        let offset = (index - 16) as usize;
+        let r = XTERM_CUBE_LEVELS[offset / 36];
+        let g = XTERM_CUBE_LEVELS[(offset / 6) % 6];
+        let b = XTERM_CUBE_LEVELS[offset % 6];
+        Rgb8::new(r, g, b)
+    } else {
+        let level = 8 + (index - 232) * 10;
+        Rgb8::new(level, level, level)
+    }
+}
+
+/// Quantizes `rgb` to the nearest fixed xterm 256-colour palette index (`16..=255`) by perceptual
+/// Euclidean `ΔE_OK` in OKLab (`PLAN.md` §10 `preview` 256-colour fallback).
+///
+/// Mutable ANSI slots `0..=15` are intentionally excluded because their rendered colours depend on
+/// whatever theme the user's terminal currently has active.
+#[must_use]
+pub fn rgb_to_xterm256(rgb: Rgb8) -> u8 {
+    let target = rgb.to_oklab();
+    let mut best_index = 16_u8;
+    let mut best_de = f64::INFINITY;
+
+    for idx in 16..=255_u8 {
+        let candidate = xterm256_color(idx);
+        if candidate == rgb {
+            return idx;
+        }
+        let de = target.delta_e(candidate.to_oklab());
+        if de < best_de {
+            best_de = de;
+            best_index = idx;
+        }
+    }
+
+    best_index
+}
