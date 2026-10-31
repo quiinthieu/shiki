@@ -1,0 +1,12 @@
+[package]
+name = "sk-core"
+description = "Pure solar, OKLCH colour, contrast, season, location, and palette math"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true

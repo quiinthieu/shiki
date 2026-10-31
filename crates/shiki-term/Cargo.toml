@@ -1,0 +1,28 @@
+[package]
+name = "shiki-term"
+description = "Terminal colours that drift slowly with local sunrise, sunset and the seasons"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "shiki-term"
+path = "src/main.rs"
+
+[dependencies]
+sk-core = { workspace = true }
+sk-store = { workspace = true }
+sk-deliver = { workspace = true }
+sk-import = { workspace = true }
+clap = { workspace = true }
+
+[dev-dependencies]
+assert_cmd = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true
