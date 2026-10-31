@@ -149,7 +149,7 @@ Tick `[x]` when done. **M1 is the MVP**: new prompts drift via the hook. Everyth
 ### M0 Skeleton
 - [x] **T01 Workspace & tooling.** Stub crates, `product.rs`, toolchain, `deny.toml`, `ci.yml`, `lint-privacy.sh`, `DependencyGraphTests`.
   *AC:* CI green on macOS and Linux. `--version` uses `product.rs`. The lint catches a planted `std::net`.
-- [ ] **T02 Test harness.** `TestEnv`, fixed-instant helpers, fixture loaders, insta, a pty helper.
+- [x] **T02 Test harness.** `TestEnv`, fixed-instant helpers, fixture loaders, insta, a pty helper.
   *AC:* a lint proves `sk-core` has no `std::fs`, `SystemTime::now` or `std::env`. Sample tests pass 100× in a loop.
 
 ### M1 MVP: drift in your shell
