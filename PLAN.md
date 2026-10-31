@@ -154,7 +154,7 @@ Tick `[x]` when done. **M1 is the MVP**: new prompts drift via the hook. Everyth
 
 ### M1 MVP: drift in your shell
 - [x] **T03 Solar.** NOAA position, events, polar cases. *AC:* fixtures within the documented tolerance (capture URL and date in the header). Polar cases pass.
-- [ ] **T04 Location.** Manual lat/lon (validated, rounded), vendored tzdb + `backward`, `locate`, ADR jiff vs time. *AC:* `Asia/Saigon` = `Asia/Ho_Chi_Minh`. An unknown zone suggests `locate --set`.
+- [x] **T04 Location.** Manual lat/lon (validated, rounded), vendored tzdb + `backward`, `locate`, ADR jiff vs time. *AC:* `Asia/Saigon` = `Asia/Ho_Chi_Minh`. An unknown zone suggests `locate --set`.
 - [ ] **T05 Colour math.** OKLab/OKLCH, gamut map, WCAG, ΔE_OK. *AC:* oracle and round-trip tests pass. `contrast(#000,#fff) = 21`.
 - [ ] **T06 Palette & frames.** Schema with file/line errors, `d`/`s`, OKLCH blend, fix-up, the `shiki` palette, `palette check`.
   *AC:* property tests pass over a year at 10-minute steps in both hemispheres. `palette check` prints the worst moment.
