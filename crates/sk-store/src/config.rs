@@ -217,11 +217,13 @@ pub fn load_config(paths: &ShikiPaths) -> Result<AppConfig, StoreError> {
     })
 }
 
-/// Atomically writes `config` to `paths.config_file()` (`temp -> fsync -> rename`).
+/// Atomically writes `config` to `paths.config_file()` (`temp -> fsync -> rename`) and expires
+/// any cached prompt-hook freshness lease in `current.gen`.
 pub fn save_config(paths: &ShikiPaths, config: &AppConfig) -> Result<(), StoreError> {
     let serialized = toml::to_string_pretty(config)
         .map_err(|err| StoreError::ConfigSerialize(redact_numeric_literals(&err.to_string())))?;
-    atomic_write(&paths.config_file(), serialized.as_bytes())
+    atomic_write(&paths.config_file(), serialized.as_bytes())?;
+    crate::store::expire_generation_freshness(paths)
 }
 
 /// Pure location resolver combining a parsed `AppConfig`, an optional detected system timezone,

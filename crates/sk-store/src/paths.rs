@@ -159,6 +159,11 @@ impl ShikiPaths {
     }
 
     #[must_use]
+    pub fn current_gen_file(&self) -> PathBuf {
+        self.runtime_dir.join("current.gen")
+    }
+
+    #[must_use]
     pub fn lock_file(&self) -> PathBuf {
         self.runtime_dir.join("shiki.lock")
     }
