@@ -15,6 +15,7 @@ toml = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }
+palette = { workspace = true }
 proptest = { workspace = true }
 serde_json = { workspace = true }
 
