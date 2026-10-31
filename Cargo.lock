@@ -738,6 +738,7 @@ dependencies = [
  "assert_cmd",
  "clap",
  "insta",
+ "proptest",
  "rustix",
  "serde_json",
  "sk-core",

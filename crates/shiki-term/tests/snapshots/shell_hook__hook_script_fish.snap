@@ -1,0 +1,58 @@
+---
+source: crates/shiki-term/tests/shell_hook.rs
+expression: script
+---
+# Shiki prompt hook for fish (`shiki-term hook fish | source`)
+if not set -q __SHIKI_GEN
+    set -g __SHIKI_GEN ""
+end
+if not set -q __SHIKI_OS
+    set -g __SHIKI_OS (uname -s 2>/dev/null)
+end
+
+function __shiki_fish_prompt --on-event fish_prompt
+    set -l _shiki_status $status
+    if not isatty stdout
+        return $_shiki_status
+    end
+
+    set -l _shiki_rt ""
+    if set -q SHIKI_HOME; and test -n "$SHIKI_HOME"
+        set _shiki_rt "$SHIKI_HOME"
+    else if test "$__SHIKI_OS" = Darwin
+        set _shiki_rt "$HOME/Library/Application Support/Shiki"
+    else
+        set -l _shiki_state_base "$HOME/.local/state"
+        if set -q XDG_STATE_HOME; and test -n "$XDG_STATE_HOME"
+            set _shiki_state_base "$XDG_STATE_HOME"
+        end
+        if set -q XDG_RUNTIME_DIR; and test -n "$XDG_RUNTIME_DIR"
+            set _shiki_rt "$XDG_RUNTIME_DIR/shiki-term"
+        else
+            set _shiki_rt "$_shiki_state_base/shiki-term"
+        end
+    end
+
+    set -l _shiki_bin "shiki-term"
+    if set -q SHIKI_TERM_BIN; and test -n "$SHIKI_TERM_BIN"
+        set _shiki_bin "$SHIKI_TERM_BIN"
+    end
+
+    command "$_shiki_bin" _emit --if-stale >/dev/null 2>&1
+
+    set -l _shiki_gen_file "$_shiki_rt/current.gen"
+    set -l _shiki_seq_file "$_shiki_rt/current.seq"
+    if test -r "$_shiki_gen_file"
+        set -l _shiki_gen ""
+        set -l _shiki_until ""
+        read -l _shiki_gen _shiki_until < "$_shiki_gen_file" 2>/dev/null
+        if test -n "$_shiki_gen"; and test "$_shiki_gen" != "$__SHIKI_GEN"
+            set -g __SHIKI_GEN "$_shiki_gen"
+            if test -s "$_shiki_seq_file"
+                command cat "$_shiki_seq_file" 2>/dev/null
+            end
+        end
+    end
+
+    return $_shiki_status
+end

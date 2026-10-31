@@ -1,0 +1,62 @@
+---
+source: crates/shiki-term/tests/shell_hook.rs
+expression: script
+---
+# Shiki prompt hook for zsh (`eval "$(shiki-term hook zsh)"`)
+zmodload -F zsh/datetime b:EPOCHSECONDS 2>/dev/null || true
+typeset -g __SHIKI_GEN="${__SHIKI_GEN:-}"
+
+__shiki_precmd() {
+    local _shiki_status=$?
+    [[ -t 1 ]] || return $_shiki_status
+
+    local _shiki_rt _shiki_cfg
+    if [[ -n "${SHIKI_HOME:-}" ]]; then
+        _shiki_rt="$SHIKI_HOME"
+        _shiki_cfg="$SHIKI_HOME/config.toml"
+    elif [[ "${OSTYPE:-}" == darwin* ]]; then
+        _shiki_rt="${HOME:-}/Library/Application Support/Shiki"
+        _shiki_cfg="$_shiki_rt/config.toml"
+    else
+        local _shiki_cfg_dir="${XDG_CONFIG_HOME:-${HOME:-}/.config}/shiki-term"
+        local _shiki_state_dir="${XDG_STATE_HOME:-${HOME:-}/.local/state}/shiki-term"
+        if [[ -n "${XDG_RUNTIME_DIR:-}" ]]; then
+            _shiki_rt="$XDG_RUNTIME_DIR/shiki-term"
+        else
+            _shiki_rt="$_shiki_state_dir"
+        fi
+        _shiki_cfg="$_shiki_cfg_dir/config.toml"
+    fi
+
+    local _shiki_gen_file="$_shiki_rt/current.gen"
+    local _shiki_seq_file="$_shiki_rt/current.seq"
+    local _shiki_gen="" _shiki_until=0 _shiki_fresh=0
+
+    if [[ -r "$_shiki_gen_file" && -e "$_shiki_seq_file" && ! "$_shiki_cfg" -nt "$_shiki_gen_file" ]]; then
+        IFS=' ' read -r _shiki_gen _shiki_until < "$_shiki_gen_file" 2>/dev/null || true
+        if [[ -n "${EPOCHSECONDS:-}" && "$_shiki_until" == <-> ]] && (( EPOCHSECONDS < _shiki_until )); then
+            _shiki_fresh=1
+        fi
+    fi
+
+    if (( ! _shiki_fresh )); then
+        command "${SHIKI_TERM_BIN:-shiki-term}" _emit --if-stale >/dev/null 2>&1 || true
+        if [[ -r "$_shiki_gen_file" ]]; then
+            IFS=' ' read -r _shiki_gen _shiki_until < "$_shiki_gen_file" 2>/dev/null || true
+        fi
+    fi
+
+    if [[ -n "$_shiki_gen" && "$_shiki_gen" != "$__SHIKI_GEN" ]]; then
+        __SHIKI_GEN="$_shiki_gen"
+        if [[ -s "$_shiki_seq_file" ]]; then
+            command cat "$_shiki_seq_file" 2>/dev/null || true
+        fi
+    fi
+
+    return $_shiki_status
+}
+
+typeset -ga precmd_functions
+if (( ! ${precmd_functions[(Ie)__shiki_precmd]} )); then
+    precmd_functions+=(__shiki_precmd)
+fi
