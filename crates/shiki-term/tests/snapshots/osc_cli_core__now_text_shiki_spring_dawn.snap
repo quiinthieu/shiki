@@ -1,0 +1,11 @@
+---
+source: crates/shiki-term/tests/osc_cli_core.rs
+expression: stdout
+---
+palette: shiki
+instant: 2026-03-20T20:35:00Z
+phase: civil_dawn (dawn, d=0.513, elevation=-2.6 deg, noon=+54.5 deg, polar=normal)
+season: spring (s=0.001, strength=1.000)
+next event: sunrise at 2026-03-20T20:44:08Z
+colors: bg=#27252b fg=#ece4e8 cursor=#ecba83 selection=#faf4f7 on #3f3a45
+contrast: fg/bg=12.14:1 selection=10.17:1 min_ansi/bg=5.66:1 (fix-up slots: 0)

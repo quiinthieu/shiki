@@ -11,6 +11,7 @@ repository.workspace = true
 [dependencies]
 sk-core = { workspace = true }
 rustix = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }

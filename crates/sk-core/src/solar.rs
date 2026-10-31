@@ -204,6 +204,39 @@ pub enum SolarEventKind {
     AstronomicalDusk,
 }
 
+impl SolarEventKind {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::SolarNadir => "solar_nadir",
+            Self::AstronomicalDawn => "astronomical_dawn",
+            Self::NauticalDawn => "nautical_dawn",
+            Self::CivilDawn => "civil_dawn",
+            Self::Sunrise => "sunrise",
+            Self::GoldenHourEnd => "golden_hour_end",
+            Self::SolarNoon => "solar_noon",
+            Self::GoldenHourStart => "golden_hour_start",
+            Self::Sunset => "sunset",
+            Self::CivilDusk => "civil_dusk",
+            Self::NauticalDusk => "nautical_dusk",
+            Self::AstronomicalDusk => "astronomical_dusk",
+        }
+    }
+}
+
+impl fmt::Display for SolarEventKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// Upcoming solar event strictly after a queried [`UtcInstant`].
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NextSolarEvent {
+    pub kind: SolarEventKind,
+    pub instant: UtcInstant,
+}
+
 /// Full set of solar events for one local solar day.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SolarEvents {
@@ -779,4 +812,46 @@ pub fn solar_snapshot(
         polar_state: day.polar_state,
         events: day.events,
     }
+}
+
+/// Finds the earliest solar horizon/twilight crossing strictly after `instant` across the
+/// enclosing and following local solar days, returning `None` during continuous polar day/night
+/// when no crossing occurs.
+#[must_use]
+pub fn next_solar_event(
+    instant: UtcInstant,
+    coords: Coordinates,
+    angles: &SolarEventAngles,
+) -> Option<NextSolarEvent> {
+    let position = solar_position(instant, coords);
+    let day_index = solar_day_index_at(instant, coords, &position);
+    let mut best: Option<NextSolarEvent> = None;
+
+    for idx in [day_index, day_index + 1] {
+        let day = solar_day_for_index(idx, coords, angles);
+        for (kind, event_instant) in day.events.ordered_instants() {
+            if matches!(kind, SolarEventKind::SolarNadir | SolarEventKind::SolarNoon) {
+                continue;
+            }
+            if event_instant > instant {
+                match best {
+                    None => {
+                        best = Some(NextSolarEvent {
+                            kind,
+                            instant: event_instant,
+                        });
+                    }
+                    Some(prev) if event_instant < prev.instant => {
+                        best = Some(NextSolarEvent {
+                            kind,
+                            instant: event_instant,
+                        });
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    best
 }

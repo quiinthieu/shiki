@@ -7,6 +7,7 @@
 
 use crate::solar::{apparent_solar_longitude_deg, Coordinates};
 use crate::time::UtcInstant;
+use core::fmt;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -95,6 +96,12 @@ impl Season {
         } else {
             Self::Winter
         }
+    }
+}
+
+impl fmt::Display for Season {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 

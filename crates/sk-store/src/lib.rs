@@ -5,6 +5,8 @@ pub mod clock;
 pub mod config;
 pub mod error;
 pub mod fixtures;
+pub mod moment;
 pub mod palette;
 pub mod paths;
+pub mod store;
 pub mod tz_detect;

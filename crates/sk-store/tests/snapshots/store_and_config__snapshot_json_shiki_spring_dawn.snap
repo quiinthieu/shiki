@@ -1,0 +1,55 @@
+---
+source: crates/sk-store/tests/store_and_config.rs
+expression: raw_snapshot_json
+---
+{
+  "schema_version": 1,
+  "palette": "shiki",
+  "instant_rfc3339": "2026-03-20T20:35:00Z",
+  "unix_secs": 1774038900,
+  "solar_phase": "civil_dawn",
+  "day_half": "dawn",
+  "day_phase": 0.512938,
+  "season": "spring",
+  "season_phase": 0.000685,
+  "season_strength": 1.0,
+  "elevation_deg": -2.565539,
+  "noon_elevation_deg": 54.512041,
+  "polar_state": "normal",
+  "next_event": {
+    "kind": "sunrise",
+    "instant_rfc3339": "2026-03-20T20:44:08Z",
+    "unix_secs": 1774039448
+  },
+  "colors": {
+    "bg": "#27252b",
+    "fg": "#ece4e8",
+    "cursor": "#ecba83",
+    "selection_bg": "#3f3a45",
+    "selection_fg": "#faf4f7",
+    "ansi": [
+      "#332f37",
+      "#e88083",
+      "#85d4a3",
+      "#edd68d",
+      "#7bbdf1",
+      "#d697e7",
+      "#6fcdd1",
+      "#dfd7dc",
+      "#746d77",
+      "#f4979a",
+      "#9fe4b9",
+      "#f5df9d",
+      "#95ccf8",
+      "#e3aff0",
+      "#8adce0",
+      "#f9f5f7"
+    ]
+  },
+  "contrast": {
+    "fg_bg_ratio": 12.1442,
+    "selection_ratio": 10.1698,
+    "min_ansi_bg_ratio": 5.6622,
+    "fixup_slots": 0
+  }
+}

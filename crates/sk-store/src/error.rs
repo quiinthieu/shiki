@@ -42,4 +42,27 @@ pub enum StoreError {
 
     #[error("failed to serialize configuration: {0}")]
     ConfigSerialize(String),
+
+    #[error("unknown configuration key '{key}' (valid keys: {valid_keys})")]
+    UnknownConfigKey {
+        key: String,
+        valid_keys: &'static str,
+    },
+
+    #[error("invalid value for configuration key '{key}': {reason}")]
+    InvalidConfigValue { key: String, reason: String },
+
+    #[error(
+        "lowering WCAG contrast threshold '{key}' below default ({default_ratio:.1}:1) requires `--i-know`"
+    )]
+    LowerContrastRequiresAck { key: String, default_ratio: f64 },
+
+    #[error("failed to parse JSON store file at {path}: {message}")]
+    JsonParse { path: PathBuf, message: String },
+
+    #[error("failed to serialize JSON store file: {0}")]
+    JsonSerialize(String),
+
+    #[error("invalid date/time query: {0}")]
+    InvalidMomentQuery(String),
 }

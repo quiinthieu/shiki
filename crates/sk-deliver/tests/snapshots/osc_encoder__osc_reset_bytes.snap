@@ -1,0 +1,9 @@
+---
+source: crates/sk-deliver/tests/osc_encoder.rs
+expression: snapshot
+---
+byte_len = 28
+\x1b]104\x1b\\
+\x1b]110\x1b\\
+\x1b]111\x1b\\
+\x1b]112\x1b\\

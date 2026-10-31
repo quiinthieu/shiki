@@ -1,15 +1,25 @@
-//! `config.toml` schema, atomic persistence, and location resolution (`PLAN.md` §4 & §6).
+//! `config.toml` schema, atomic persistence, `config get|set`, and location resolution (`PLAN.md` §4 & §6).
 
 use crate::atomic::atomic_write;
 use crate::error::StoreError;
+use crate::palette::load_palette;
 use crate::paths::ShikiPaths;
 use crate::tz_detect::detect_system_timezone;
 use serde::{Deserialize, Serialize};
+use sk_core::color::{ContrastThresholds, WCAG_MAX_CONTRAST_RATIO};
 use sk_core::location::{LocationError, LocationMode, ManualLocation, ResolvedLocation, TzDb};
+use sk_core::palette::ModelConfig;
 use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::ops::Range;
+
+pub const DEFAULT_PALETTE_NAME: &str = "shiki";
+pub const DEFAULT_STEP_THRESHOLD: f64 = 0.008;
+pub const DEFAULT_HOOK_MIN_INTERVAL_SECS: u64 = 60;
+pub const DEFAULT_MAX_SLEEP_SECS: u64 = 1_800;
+
+pub const VALID_CONFIG_KEYS: &str = "palette, step_threshold, hook_min_interval_secs, max_sleep_secs, location.mode, location.latitude, location.longitude, location.timezone, contrast.fg_bg_min_ratio, contrast.ansi_bg_min_ratio, delivery.tty_broadcast, delivery.tmux_passthrough";
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct LocationSection {
@@ -26,11 +36,119 @@ pub struct LocationSection {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct AppConfig {
-    #[serde(default)]
-    pub location: LocationSection,
+pub struct ContrastSection {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fg_bg_min_ratio: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ansi_bg_min_ratio: Option<f64>,
     #[serde(flatten)]
     pub extra: BTreeMap<String, toml::Value>,
+}
+
+impl ContrastSection {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.fg_bg_min_ratio.is_none() && self.ansi_bg_min_ratio.is_none() && self.extra.is_empty()
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DeliverySection {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tty_broadcast: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tmux_passthrough: Option<bool>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, toml::Value>,
+}
+
+impl DeliverySection {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.tty_broadcast.is_none() && self.tmux_passthrough.is_none() && self.extra.is_empty()
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct AppConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub palette: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub step_threshold: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hook_min_interval_secs: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_sleep_secs: Option<u64>,
+    #[serde(default)]
+    pub location: LocationSection,
+    #[serde(default, skip_serializing_if = "ContrastSection::is_empty")]
+    pub contrast: ContrastSection,
+    #[serde(default, skip_serializing_if = "DeliverySection::is_empty")]
+    pub delivery: DeliverySection,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, toml::Value>,
+}
+
+impl AppConfig {
+    #[must_use]
+    pub fn effective_palette(&self) -> &str {
+        self.palette.as_deref().unwrap_or(DEFAULT_PALETTE_NAME)
+    }
+
+    #[must_use]
+    pub fn effective_step_threshold(&self) -> f64 {
+        self.step_threshold.unwrap_or(DEFAULT_STEP_THRESHOLD)
+    }
+
+    #[must_use]
+    pub fn effective_hook_min_interval_secs(&self) -> u64 {
+        self.hook_min_interval_secs
+            .unwrap_or(DEFAULT_HOOK_MIN_INTERVAL_SECS)
+    }
+
+    #[must_use]
+    pub fn effective_max_sleep_secs(&self) -> u64 {
+        self.max_sleep_secs.unwrap_or(DEFAULT_MAX_SLEEP_SECS)
+    }
+
+    #[must_use]
+    pub fn effective_tty_broadcast(&self) -> bool {
+        self.delivery.tty_broadcast.unwrap_or(false)
+    }
+
+    #[must_use]
+    pub fn effective_tmux_passthrough(&self) -> bool {
+        self.delivery.tmux_passthrough.unwrap_or(false)
+    }
+
+    #[must_use]
+    pub fn effective_contrast(&self, defaults: ContrastThresholds) -> ContrastThresholds {
+        ContrastThresholds {
+            fg_bg_min_ratio: self
+                .contrast
+                .fg_bg_min_ratio
+                .unwrap_or(defaults.fg_bg_min_ratio),
+            ansi_bg_min_ratio: self
+                .contrast
+                .ansi_bg_min_ratio
+                .unwrap_or(defaults.ansi_bg_min_ratio),
+        }
+    }
+
+    /// Builds a [`ModelConfig`] starting from [`ModelConfig::bundled()`] with any validated user
+    /// `[contrast]` overrides applied.
+    pub fn effective_model_config(&self) -> Result<ModelConfig, StoreError> {
+        let mut model = ModelConfig::bundled();
+        model.contrast = self.effective_contrast(model.contrast);
+        model
+            .contrast
+            .validate()
+            .map_err(|err| StoreError::InvalidConfigValue {
+                key: "contrast".to_string(),
+                reason: err.to_string(),
+            })?;
+        Ok(model)
+    }
 }
 
 fn format_span_line_col(src: &str, span: Option<Range<usize>>) -> String {
@@ -192,4 +310,276 @@ pub fn set_timezone_location_with(
 pub fn set_timezone_location(paths: &ShikiPaths) -> Result<ResolvedLocation, StoreError> {
     let detected = detect_system_timezone();
     set_timezone_location_with(paths, detected.as_deref(), TzDb::bundled())
+}
+
+fn format_opt_f64(val: Option<f64>) -> String {
+    match val {
+        Some(v) => format!("{v}"),
+        None => "unset".to_string(),
+    }
+}
+
+fn get_config_value_from(config: &AppConfig, key: &str) -> Result<String, StoreError> {
+    let defaults = ModelConfig::bundled().contrast;
+    let effective_contrast = config.effective_contrast(defaults);
+    match key {
+        "palette" => Ok(config.effective_palette().to_string()),
+        "step_threshold" => Ok(format!("{}", config.effective_step_threshold())),
+        "hook_min_interval_secs" => Ok(format!("{}", config.effective_hook_min_interval_secs())),
+        "max_sleep_secs" => Ok(format!("{}", config.effective_max_sleep_secs())),
+        "location.mode" => Ok(match config.location.mode {
+            LocationMode::Timezone => "timezone".to_string(),
+            LocationMode::Manual => "manual".to_string(),
+        }),
+        "location.latitude" => Ok(format_opt_f64(config.location.latitude)),
+        "location.longitude" => Ok(format_opt_f64(config.location.longitude)),
+        "location.timezone" => Ok(config
+            .location
+            .timezone
+            .clone()
+            .unwrap_or_else(|| "auto".to_string())),
+        "contrast.fg_bg_min_ratio" => Ok(format!("{}", effective_contrast.fg_bg_min_ratio)),
+        "contrast.ansi_bg_min_ratio" => Ok(format!("{}", effective_contrast.ansi_bg_min_ratio)),
+        "delivery.tty_broadcast" => Ok(format!("{}", config.effective_tty_broadcast())),
+        "delivery.tmux_passthrough" => Ok(format!("{}", config.effective_tmux_passthrough())),
+        _ => Err(StoreError::UnknownConfigKey {
+            key: key.to_string(),
+            valid_keys: VALID_CONFIG_KEYS,
+        }),
+    }
+}
+
+/// Returns the effective string value of `key` from `config.toml` (falling back to defaults when
+/// `config.toml` or the specific field is omitted).
+pub fn get_config_value(paths: &ShikiPaths, key: &str) -> Result<String, StoreError> {
+    let config = load_config(paths)?;
+    get_config_value_from(&config, key.trim())
+}
+
+/// Lists all supported configuration keys and their effective values in deterministic order.
+pub fn list_config_entries(paths: &ShikiPaths) -> Result<Vec<(&'static str, String)>, StoreError> {
+    const KEYS: [&str; 12] = [
+        "palette",
+        "step_threshold",
+        "hook_min_interval_secs",
+        "max_sleep_secs",
+        "location.mode",
+        "location.latitude",
+        "location.longitude",
+        "location.timezone",
+        "contrast.fg_bg_min_ratio",
+        "contrast.ansi_bg_min_ratio",
+        "delivery.tty_broadcast",
+        "delivery.tmux_passthrough",
+    ];
+    let config = load_config(paths)?;
+    let mut out = Vec::with_capacity(KEYS.len());
+    for key in KEYS {
+        out.push((key, get_config_value_from(&config, key)?));
+    }
+    Ok(out)
+}
+
+fn parse_bool_value(key: &str, raw: &str) -> Result<bool, StoreError> {
+    match raw.trim() {
+        "true" | "1" | "yes" | "on" => Ok(true),
+        "false" | "0" | "no" | "off" => Ok(false),
+        _ => Err(StoreError::InvalidConfigValue {
+            key: key.to_string(),
+            reason: "expected `true` or `false`".to_string(),
+        }),
+    }
+}
+
+/// Validates and atomically updates `key = value` in `config.toml`.
+///
+/// Enforces:
+/// - Palette validity (`PLAN.md` §6: *"An invalid palette never applies"*)
+/// - `--i-know` (`allow_lower_contrast`) when lowering WCAG contrast thresholds below defaults
+/// - Coordinate range checks and `0.1°` rounding without leaking invalid numeric values in errors
+pub fn set_config_value(
+    paths: &ShikiPaths,
+    key: &str,
+    value: &str,
+    allow_lower_contrast: bool,
+) -> Result<String, StoreError> {
+    let key = key.trim();
+    let trimmed = value.trim();
+    let mut config = load_config(paths)?;
+    let defaults = ModelConfig::bundled().contrast;
+
+    match key {
+        "palette" => {
+            if trimmed.is_empty() {
+                return Err(StoreError::InvalidConfigValue {
+                    key: key.to_string(),
+                    reason: "palette name cannot be empty".to_string(),
+                });
+            }
+            // Verify palette parses cleanly before saving (`PLAN.md` §6).
+            let _ = load_palette(paths, trimmed)?;
+            config.palette = Some(trimmed.to_string());
+        }
+        "step_threshold" => {
+            let parsed: f64 = trimmed
+                .parse()
+                .map_err(|_| StoreError::InvalidConfigValue {
+                    key: key.to_string(),
+                    reason: "expected a finite number in (0.0, 1.0]".to_string(),
+                })?;
+            if !parsed.is_finite() || parsed <= 0.0 || parsed > 1.0 {
+                return Err(StoreError::InvalidConfigValue {
+                    key: key.to_string(),
+                    reason: "step_threshold must be within (0.0, 1.0]".to_string(),
+                });
+            }
+            config.step_threshold = Some(parsed);
+        }
+        "hook_min_interval_secs" => {
+            let parsed: u64 = trimmed
+                .parse()
+                .map_err(|_| StoreError::InvalidConfigValue {
+                    key: key.to_string(),
+                    reason: "expected a positive integer number of seconds".to_string(),
+                })?;
+            if parsed == 0 || parsed > 86_400 {
+                return Err(StoreError::InvalidConfigValue {
+                    key: key.to_string(),
+                    reason: "hook_min_interval_secs must be within 1..=86400".to_string(),
+                });
+            }
+            config.hook_min_interval_secs = Some(parsed);
+        }
+        "max_sleep_secs" => {
+            let parsed: u64 = trimmed
+                .parse()
+                .map_err(|_| StoreError::InvalidConfigValue {
+                    key: key.to_string(),
+                    reason: "expected an integer number of seconds >= 60".to_string(),
+                })?;
+            if !(60..=86_400).contains(&parsed) {
+                return Err(StoreError::InvalidConfigValue {
+                    key: key.to_string(),
+                    reason: "max_sleep_secs must be within 60..=86400".to_string(),
+                });
+            }
+            config.max_sleep_secs = Some(parsed);
+        }
+        "location.mode" => match trimmed {
+            "timezone" => {
+                let detected = detect_system_timezone();
+                let effective_tz = config
+                    .location
+                    .timezone
+                    .as_deref()
+                    .or(detected.as_deref())
+                    .ok_or(LocationError::MissingSystemTimezone)?;
+                let _ = TzDb::bundled().lookup(effective_tz)?;
+                config.location.mode = LocationMode::Timezone;
+                config.location.latitude = None;
+                config.location.longitude = None;
+            }
+            "manual" => {
+                if config.location.latitude.is_none() || config.location.longitude.is_none() {
+                    return Err(StoreError::Location(
+                        LocationError::MissingManualCoordinates,
+                    ));
+                }
+                config.location.mode = LocationMode::Manual;
+            }
+            _ => {
+                return Err(StoreError::InvalidConfigValue {
+                    key: key.to_string(),
+                    reason: "expected `timezone` or `manual`".to_string(),
+                });
+            }
+        },
+        "location.latitude" => {
+            let lat: f64 = trimmed
+                .parse()
+                .map_err(|_| StoreError::InvalidConfigValue {
+                    key: key.to_string(),
+                    reason: "latitude must be a decimal number in [-90, 90]".to_string(),
+                })?;
+            let lon = config.location.longitude.unwrap_or(0.0);
+            let manual = ManualLocation::new(lat, lon)?;
+            config.location.latitude = Some(manual.latitude_deg());
+        }
+        "location.longitude" => {
+            let lon: f64 = trimmed
+                .parse()
+                .map_err(|_| StoreError::InvalidConfigValue {
+                    key: key.to_string(),
+                    reason: "longitude must be a decimal number in [-180, 180]".to_string(),
+                })?;
+            let lat = config.location.latitude.unwrap_or(0.0);
+            let manual = ManualLocation::new(lat, lon)?;
+            config.location.longitude = Some(manual.longitude_deg());
+        }
+        "location.timezone" => {
+            if matches!(trimmed, "" | "auto" | "none") {
+                config.location.timezone = None;
+            } else {
+                let _ = TzDb::bundled().lookup(trimmed)?;
+                config.location.timezone = Some(trimmed.to_string());
+            }
+        }
+        "contrast.fg_bg_min_ratio" => {
+            let ratio: f64 = trimmed
+                .parse()
+                .map_err(|_| StoreError::InvalidConfigValue {
+                    key: key.to_string(),
+                    reason: "expected a finite contrast ratio in [1.0, 21.0]".to_string(),
+                })?;
+            if !ratio.is_finite() || !(1.0..=WCAG_MAX_CONTRAST_RATIO).contains(&ratio) {
+                return Err(StoreError::InvalidConfigValue {
+                    key: key.to_string(),
+                    reason: "contrast ratio must be within [1.0, 21.0]".to_string(),
+                });
+            }
+            if ratio < defaults.fg_bg_min_ratio && !allow_lower_contrast {
+                return Err(StoreError::LowerContrastRequiresAck {
+                    key: key.to_string(),
+                    default_ratio: defaults.fg_bg_min_ratio,
+                });
+            }
+            config.contrast.fg_bg_min_ratio = Some(ratio);
+        }
+        "contrast.ansi_bg_min_ratio" => {
+            let ratio: f64 = trimmed
+                .parse()
+                .map_err(|_| StoreError::InvalidConfigValue {
+                    key: key.to_string(),
+                    reason: "expected a finite contrast ratio in [1.0, 21.0]".to_string(),
+                })?;
+            if !ratio.is_finite() || !(1.0..=WCAG_MAX_CONTRAST_RATIO).contains(&ratio) {
+                return Err(StoreError::InvalidConfigValue {
+                    key: key.to_string(),
+                    reason: "contrast ratio must be within [1.0, 21.0]".to_string(),
+                });
+            }
+            if ratio < defaults.ansi_bg_min_ratio && !allow_lower_contrast {
+                return Err(StoreError::LowerContrastRequiresAck {
+                    key: key.to_string(),
+                    default_ratio: defaults.ansi_bg_min_ratio,
+                });
+            }
+            config.contrast.ansi_bg_min_ratio = Some(ratio);
+        }
+        "delivery.tty_broadcast" => {
+            config.delivery.tty_broadcast = Some(parse_bool_value(key, trimmed)?);
+        }
+        "delivery.tmux_passthrough" => {
+            config.delivery.tmux_passthrough = Some(parse_bool_value(key, trimmed)?);
+        }
+        _ => {
+            return Err(StoreError::UnknownConfigKey {
+                key: key.to_string(),
+                valid_keys: VALID_CONFIG_KEYS,
+            });
+        }
+    }
+
+    save_config(paths, &config)?;
+    get_config_value_from(&config, key)
 }

@@ -1,0 +1,20 @@
+---
+source: crates/shiki-term/tests/osc_cli_core.rs
+expression: nc_str
+---
+palette: shiki  instant: 2026-03-20T20:35:00Z
+phase: civil_dawn (dawn, d=0.513, elev=-2.6 deg)  season: spring (s=0.001)
+next event: sunrise at 2026-03-20T20:44:08Z  contrast: fg/bg 12.14:1, sel 10.17:1, min ansi 5.66:1
+
+swatches:
+  base: bg [bg] #27252b  fg [fg] #ece4e8  cursor [cur] #ecba83  sel [sel] #3f3a45
+  ansi 00-07: [00] #332f37 [01] #e88083 [02] #85d4a3 [03] #edd68d [04] #7bbdf1 [05] #d697e7 [06] #6fcdd1 [07] #dfd7dc
+  ansi 08-15: [08] #746d77 [09] #f4979a [10] #9fe4b9 [11] #f5df9d [12] #95ccf8 [13] #e3aff0 [14] #8adce0 [15] #f9f5f7
+
+sample:
+  |                                                                    |
+  |   ~/workspace git:(main) $ cargo test --workspace                  |
+  |   // Continuous 2-D OKLCH drift with WCAG 2.2 contrast guarantees  |
+  |   fn blend_sky(d: f64) -> &str { "golden_hour" }                   |
+  |   status: ok warn(0) err(0)  selected span                         |
+  |                                                                    |

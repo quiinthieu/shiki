@@ -1,14 +1,27 @@
+mod preview;
+
 use clap::{Args, Parser, Subcommand};
+use preview::{render_preview, ColorChoiceArg, PreviewColorMode};
 use sk_core::location::{ManualLocation, ResolvedLocation};
-use sk_core::palette::{check_palette_year, ModelConfig, PaletteCheckReport, WorstMoment};
+use sk_core::palette::{
+    check_palette_year, compute_frame, ModelConfig, PaletteCheckReport, WorstMoment,
+};
 use sk_core::product;
-use sk_core::solar::Coordinates;
-use sk_core::time::Clock;
+use sk_core::solar::{Coordinates, PolarState};
+use sk_core::time::{Clock, UtcInstant};
+use sk_deliver::osc::{encode_osc_frame, OscBackend};
+use sk_deliver::Backend;
 use sk_store::clock::SystemClock;
-use sk_store::config::{resolve_location, set_manual_location, set_timezone_location};
+use sk_store::config::{
+    get_config_value, list_config_entries, load_config, resolve_location, set_config_value,
+    set_manual_location, set_timezone_location,
+};
 use sk_store::error::StoreError;
+use sk_store::moment::resolve_moment_query;
 use sk_store::palette::load_palette;
 use sk_store::paths::ShikiPaths;
+use sk_store::store::{persist_applied_frame, persist_reset, Snapshot};
+use std::io;
 use std::process::ExitCode;
 
 #[derive(Parser, Debug)]
@@ -25,10 +38,107 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
+    /// Show the current solar phase, season, contrast, and blended colours
+    Now(NowArgs),
+    /// Compute the current frame, update store files, and emit OSC sequences to stdout
+    Apply(ApplyArgs),
+    /// Emit OSC 104/110/111/112 to restore the terminal's default colours
+    Reset,
+    /// Preview swatches and sample text for any moment without changing terminal palette
+    Preview(PreviewArgs),
+    /// Read or update configuration keys in `config.toml`
+    Config(ConfigArgs),
     /// Inspect or configure location (timezone-derived or manual coordinates)
     Locate(LocateArgs),
     /// Manage and verify terminal colour palettes
     Palette(PaletteArgs),
+}
+
+#[derive(Args, Debug)]
+struct NowArgs {
+    /// Output the coordinate-free versioned snapshot as pretty JSON
+    #[arg(long)]
+    json: bool,
+
+    /// Optional RFC 3339 or `HH:MM[:SS]` moment override for deterministic inspection
+    #[arg(long)]
+    time: Option<String>,
+}
+
+#[derive(Args, Debug)]
+struct ApplyArgs {
+    /// Override palette name (`shiki`, user palette in `palettes/`) or path to a `.toml` file
+    #[arg(long)]
+    palette: Option<String>,
+
+    /// Optional RFC 3339 or `HH:MM[:SS]` moment override for deterministic simulation
+    #[arg(long)]
+    time: Option<String>,
+}
+
+#[derive(Args, Debug)]
+struct PreviewArgs {
+    /// Time of day (`HH:MM`, `HH:MM:SS`, `HH:MM±HH:MM`) or full RFC 3339 timestamp
+    #[arg(long, allow_hyphen_values = true)]
+    time: Option<String>,
+
+    /// Calendar date (`YYYY-MM-DD`)
+    #[arg(long, allow_hyphen_values = true)]
+    date: Option<String>,
+
+    /// Override latitude in decimal degrees (`[-90, 90]`, requires `--lon`)
+    #[arg(long, allow_hyphen_values = true, requires = "lon")]
+    lat: Option<f64>,
+
+    /// Override longitude in decimal degrees (`[-180, 180]`, requires `--lat`)
+    #[arg(long, allow_hyphen_values = true, requires = "lat")]
+    lon: Option<f64>,
+
+    /// Palette name (`shiki`, user palette in `palettes/`) or path to a `.toml` file
+    #[arg(long)]
+    palette: Option<String>,
+
+    /// Output the coordinate-free versioned snapshot as pretty JSON
+    #[arg(long)]
+    json: bool,
+
+    /// ANSI colour mode (`auto` respects `NO_COLOR` and `$COLORTERM`, falling back to 256-colour)
+    #[arg(long, value_enum, default_value_t = ColorChoiceArg::Auto)]
+    color: ColorChoiceArg,
+}
+
+#[derive(Args, Debug)]
+struct ConfigArgs {
+    #[command(subcommand)]
+    command: ConfigCommand,
+}
+
+#[derive(Subcommand, Debug)]
+enum ConfigCommand {
+    /// Get one configuration key's effective value (or list all keys when omitted)
+    Get(ConfigGetArgs),
+    /// Atomically validate and update a configuration key in `config.toml`
+    Set(ConfigSetArgs),
+}
+
+#[derive(Args, Debug)]
+struct ConfigGetArgs {
+    /// Dotted configuration key (e.g. `palette`, `step_threshold`, `location.mode`)
+    key: Option<String>,
+}
+
+#[derive(Args, Debug)]
+struct ConfigSetArgs {
+    /// Dotted configuration key to update
+    key: String,
+
+    /// New value to validate and persist
+    #[arg(allow_hyphen_values = true)]
+    value: String,
+
+    /// Acknowledge lowering WCAG contrast thresholds below defaults (`PLAN.md` §4)
+    #[arg(long)]
+    i_know: bool,
 }
 
 #[derive(Args, Debug)]
@@ -92,6 +202,199 @@ struct PaletteCheckArgs {
     /// Acknowledge lowering WCAG contrast thresholds below defaults (`PLAN.md` §4)
     #[arg(long)]
     i_know: bool,
+}
+
+fn polar_state_str(state: PolarState) -> &'static str {
+    match state {
+        PolarState::Normal => "normal",
+        PolarState::PolarDay => "polar_day",
+        PolarState::PolarNight => "polar_night",
+    }
+}
+
+fn iana_zone_from_resolved(resolved: &ResolvedLocation) -> Option<&str> {
+    match resolved {
+        ResolvedLocation::Timezone(tz) => Some(tz.canonical_zone.as_str()),
+        ResolvedLocation::Manual(_) => None,
+    }
+}
+
+fn format_snapshot_json(snapshot: &Snapshot) -> Result<String, String> {
+    let mut json = serde_json::to_string_pretty(snapshot).map_err(|e| e.to_string())?;
+    json.push('\n');
+    Ok(json)
+}
+
+fn format_now_text(snapshot: &Snapshot) -> String {
+    let polar = polar_state_str(snapshot.polar_state);
+    let next_event = match &snapshot.next_event {
+        Some(ev) => format!("{} at {}", ev.kind, ev.instant_rfc3339),
+        None => format!("none ({polar})"),
+    };
+    let c = &snapshot.colors;
+    format!(
+        "palette: {}\ninstant: {}\nphase: {} ({}, d={:.3}, elevation={:+.1} deg, noon={:+.1} deg, polar={polar})\nseason: {} (s={:.3}, strength={:.3})\nnext event: {next_event}\ncolors: bg={} fg={} cursor={} selection={} on {}\ncontrast: fg/bg={:.2}:1 selection={:.2}:1 min_ansi/bg={:.2}:1 (fix-up slots: {})\n",
+        snapshot.palette,
+        snapshot.instant_rfc3339,
+        snapshot.solar_phase,
+        snapshot.day_half,
+        snapshot.day_phase,
+        snapshot.elevation_deg,
+        snapshot.noon_elevation_deg,
+        snapshot.season,
+        snapshot.season_phase,
+        snapshot.season_strength,
+        c.bg,
+        c.fg,
+        c.cursor,
+        c.selection_fg,
+        c.selection_bg,
+        snapshot.contrast.fg_bg_ratio,
+        snapshot.contrast.selection_ratio,
+        snapshot.contrast.min_ansi_bg_ratio,
+        snapshot.contrast.fixup_slots,
+    )
+}
+
+fn run_now(args: NowArgs) -> Result<String, String> {
+    let paths = ShikiPaths::resolve().map_err(|e| e.to_string())?;
+    let config = load_config(&paths).map_err(|e| e.to_string())?;
+    let model = config.effective_model_config().map_err(|e| e.to_string())?;
+    let resolved = resolve_location(&paths).map_err(|e| e.to_string())?;
+    let palette = load_palette(&paths, config.effective_palette()).map_err(|e| e.to_string())?;
+
+    let now_utc: UtcInstant = SystemClock.now();
+    let instant = resolve_moment_query(
+        None,
+        args.time.as_deref(),
+        iana_zone_from_resolved(&resolved).or(config.location.timezone.as_deref()),
+        now_utc,
+    )
+    .map_err(|e| e.to_string())?;
+
+    let coords = resolved.coordinates();
+    let frame = compute_frame(instant, coords, &palette, &model);
+    let snapshot = Snapshot::from_frame(palette.name(), &frame, coords, &model);
+
+    if args.json {
+        format_snapshot_json(&snapshot)
+    } else {
+        Ok(format_now_text(&snapshot))
+    }
+}
+
+fn run_apply(args: ApplyArgs) -> Result<(), String> {
+    let paths = ShikiPaths::resolve().map_err(|e| e.to_string())?;
+    let config = load_config(&paths).map_err(|e| e.to_string())?;
+    let model = config.effective_model_config().map_err(|e| e.to_string())?;
+    let resolved = resolve_location(&paths).map_err(|e| e.to_string())?;
+    let palette_spec = args
+        .palette
+        .as_deref()
+        .unwrap_or_else(|| config.effective_palette());
+    let palette = load_palette(&paths, palette_spec).map_err(|e| e.to_string())?;
+
+    let now_utc: UtcInstant = SystemClock.now();
+    let instant = resolve_moment_query(
+        None,
+        args.time.as_deref(),
+        iana_zone_from_resolved(&resolved).or(config.location.timezone.as_deref()),
+        now_utc,
+    )
+    .map_err(|e| e.to_string())?;
+
+    let coords = resolved.coordinates();
+    let frame = compute_frame(instant, coords, &palette, &model);
+    let snapshot = Snapshot::from_frame(palette.name(), &frame, coords, &model);
+    let osc_bytes = encode_osc_frame(&frame.colors);
+
+    persist_applied_frame(&paths, palette.name(), &snapshot, &osc_bytes)
+        .map_err(|e| e.to_string())?;
+
+    let stdout = io::stdout();
+    let mut backend = OscBackend::new(stdout.lock());
+    backend.deliver(&frame).map_err(|e| e.to_string())
+}
+
+fn run_reset() -> Result<(), String> {
+    let paths = ShikiPaths::resolve().map_err(|e| e.to_string())?;
+    persist_reset(&paths, SystemClock.now()).map_err(|e| e.to_string())?;
+
+    let stdout = io::stdout();
+    let mut backend = OscBackend::new(stdout.lock());
+    backend.reset().map_err(|e| e.to_string())
+}
+
+fn run_preview(args: PreviewArgs) -> Result<String, String> {
+    let paths = ShikiPaths::resolve().map_err(|e| e.to_string())?;
+    let config = load_config(&paths).map_err(|e| e.to_string())?;
+    let model = config.effective_model_config().map_err(|e| e.to_string())?;
+
+    let (coords, iana_zone_owned) = match (args.lat, args.lon) {
+        (Some(lat), Some(lon)) => {
+            let c = Coordinates::new(lat, lon).map_err(|e| e.to_string())?;
+            (c, config.location.timezone.clone())
+        }
+        _ => {
+            let resolved = resolve_location(&paths).map_err(|e| e.to_string())?;
+            let zone = iana_zone_from_resolved(&resolved)
+                .map(str::to_string)
+                .or_else(|| config.location.timezone.clone());
+            (resolved.coordinates(), zone)
+        }
+    };
+
+    let palette_spec = args
+        .palette
+        .as_deref()
+        .unwrap_or_else(|| config.effective_palette());
+    let palette = load_palette(&paths, palette_spec).map_err(|e| e.to_string())?;
+
+    let instant = resolve_moment_query(
+        args.date.as_deref(),
+        args.time.as_deref(),
+        iana_zone_owned.as_deref(),
+        SystemClock.now(),
+    )
+    .map_err(|e| e.to_string())?;
+
+    let frame = compute_frame(instant, coords, &palette, &model);
+    let snapshot = Snapshot::from_frame(palette.name(), &frame, coords, &model);
+
+    if args.json {
+        format_snapshot_json(&snapshot)
+    } else {
+        let mode = PreviewColorMode::resolve_from_env(args.color);
+        Ok(render_preview(&snapshot, mode))
+    }
+}
+
+fn run_config(args: ConfigArgs) -> Result<String, StoreError> {
+    let paths = ShikiPaths::resolve()?;
+    match args.command {
+        ConfigCommand::Get(get_args) => match get_args.key {
+            Some(key) => {
+                let val = get_config_value(&paths, &key)?;
+                Ok(format!("{val}\n"))
+            }
+            None => {
+                let entries = list_config_entries(&paths)?;
+                let mut out = String::new();
+                for (k, v) in entries {
+                    out.push_str(k);
+                    out.push_str(" = ");
+                    out.push_str(&v);
+                    out.push('\n');
+                }
+                Ok(out)
+            }
+        },
+        ConfigCommand::Set(set_args) => {
+            let effective =
+                set_config_value(&paths, &set_args.key, &set_args.value, set_args.i_know)?;
+            Ok(format!("{} = {effective}\n", set_args.key.trim()))
+        }
+    }
 }
 
 fn format_resolved_location(resolved: &ResolvedLocation) -> String {
@@ -214,31 +517,43 @@ fn run_palette_check(args: PaletteCheckArgs) -> Result<String, String> {
     Ok(format_palette_check_report(&report))
 }
 
+fn print_result<E: std::fmt::Display>(res: Result<String, E>) -> ExitCode {
+    match res {
+        Ok(out) => {
+            print!("{out}");
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("error: {err}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
         None => ExitCode::SUCCESS,
-        Some(Commands::Locate(args)) => match run_locate(args) {
-            Ok(out) => {
-                print!("{out}");
-                ExitCode::SUCCESS
-            }
+        Some(Commands::Now(args)) => print_result(run_now(args)),
+        Some(Commands::Apply(args)) => match run_apply(args) {
+            Ok(()) => ExitCode::SUCCESS,
             Err(err) => {
                 eprintln!("error: {err}");
                 ExitCode::FAILURE
             }
         },
+        Some(Commands::Reset) => match run_reset() {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(err) => {
+                eprintln!("error: {err}");
+                ExitCode::FAILURE
+            }
+        },
+        Some(Commands::Preview(args)) => print_result(run_preview(args)),
+        Some(Commands::Config(args)) => print_result(run_config(args)),
+        Some(Commands::Locate(args)) => print_result(run_locate(args)),
         Some(Commands::Palette(palette_args)) => match palette_args.command {
-            PaletteCommand::Check(args) => match run_palette_check(args) {
-                Ok(out) => {
-                    print!("{out}");
-                    ExitCode::SUCCESS
-                }
-                Err(err) => {
-                    eprintln!("error: {err}");
-                    ExitCode::FAILURE
-                }
-            },
+            PaletteCommand::Check(args) => print_result(run_palette_check(args)),
         },
     }
 }
