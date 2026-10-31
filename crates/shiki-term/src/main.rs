@@ -1,7 +1,13 @@
+mod daemon;
 mod hook;
 mod preview;
 
 use clap::{Args, Parser, Subcommand};
+use daemon::{
+    collect_daemon_status, default_user_unit_path, format_daemon_status_text, install_daemon_unit,
+    notify_running_daemon, run_foreground_daemon, should_activate_service_manager,
+    uninstall_daemon_unit, DaemonPlatformArg, HostServiceManager,
+};
 use hook::{
     install_hook_to_rc, preview_rc_block, render_hook_script, uninstall_hook_from_rc, HookShell,
 };
@@ -21,10 +27,12 @@ use sk_store::config::{
     set_manual_location, set_timezone_location,
 };
 use sk_store::error::StoreError;
-use sk_store::moment::resolve_moment_query;
+use sk_store::moment::{parse_pause_duration_secs, resolve_moment_query};
 use sk_store::palette::load_palette;
-use sk_store::paths::ShikiPaths;
-use sk_store::store::{persist_applied_frame_at, persist_reset, refresh_hook_store, Snapshot};
+use sk_store::paths::{PlatformKind, ShikiPaths};
+use sk_store::store::{
+    clear_pause, persist_applied_frame_at, persist_reset, refresh_hook_store, set_pause, Snapshot,
+};
 use std::io;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -51,6 +59,10 @@ enum Commands {
     Reset,
     /// Preview swatches and sample text for any moment without changing terminal palette
     Preview(PreviewArgs),
+    /// Pause circadian colour drift indefinitely or `--for <DURATION>`
+    Pause(PauseArgs),
+    /// Resume circadian colour drift immediately
+    Resume,
     /// Read or update configuration keys in `config.toml`
     Config(ConfigArgs),
     /// Inspect or configure location (timezone-derived or manual coordinates)
@@ -59,6 +71,8 @@ enum Commands {
     Palette(PaletteArgs),
     /// Emit or install the shell prompt hook (`zsh`, `bash`, `fish`)
     Hook(HookArgs),
+    /// Install, uninstall, inspect, or run the per-user background daemon
+    Daemon(DaemonArgs),
     /// Internal prompt-hook helper that refreshes `current.seq` and `current.gen`
     #[command(name = "_emit", hide = true)]
     Emit(EmitArgs),
@@ -298,6 +312,80 @@ struct HookUninstallArgs {
 }
 
 #[derive(Args, Debug)]
+struct PauseArgs {
+    /// Optional human duration (e.g. `30m`, `2h`, `1h30m`, `90s`, `1d`); pauses indefinitely if omitted
+    #[arg(long = "for", value_name = "DURATION", allow_hyphen_values = true)]
+    duration: Option<String>,
+}
+
+#[derive(Args, Debug)]
+struct DaemonArgs {
+    #[command(subcommand)]
+    command: DaemonCommand,
+}
+
+#[derive(Subcommand, Debug)]
+enum DaemonCommand {
+    /// Install (and activate) the per-user `launchd` LaunchAgent or `systemd --user` service
+    Install(DaemonInstallArgs),
+    /// Stop, deactivate, and remove the per-user `launchd` or `systemd --user` unit
+    Uninstall(DaemonUninstallArgs),
+    /// Show whether the daemon is running, installed, or paused
+    Status(DaemonStatusArgs),
+    /// Run the foreground predicted-step scheduler loop (invoked by `launchd` / `systemd --user`)
+    Run,
+}
+
+#[derive(Args, Debug)]
+struct DaemonInstallArgs {
+    /// Custom service unit file path override
+    #[arg(long)]
+    unit_path: Option<PathBuf>,
+
+    /// Write the unit file without calling `launchctl` or `systemctl --user`
+    #[arg(long)]
+    no_activate: bool,
+
+    /// Target OS unit format override (used by cross-platform tests and packaging verification)
+    #[arg(long, value_enum, hide = true)]
+    platform: Option<DaemonPlatformArg>,
+
+    /// Daemon executable path override recorded in the generated unit
+    #[arg(long, hide = true)]
+    exe_path: Option<PathBuf>,
+}
+
+#[derive(Args, Debug)]
+struct DaemonUninstallArgs {
+    /// Custom service unit file path override
+    #[arg(long)]
+    unit_path: Option<PathBuf>,
+
+    /// Remove the unit file without calling `launchctl` or `systemctl --user`
+    #[arg(long)]
+    no_activate: bool,
+
+    /// Target OS unit format override (used by cross-platform tests and packaging verification)
+    #[arg(long, value_enum, hide = true)]
+    platform: Option<DaemonPlatformArg>,
+}
+
+#[derive(Args, Debug)]
+struct DaemonStatusArgs {
+    /// Output the coordinate-free daemon status report as pretty JSON
+    #[arg(long)]
+    json: bool,
+
+    /// Custom service unit file path override
+    #[arg(long)]
+    unit_path: Option<PathBuf>,
+
+    /// Target OS unit format override
+    #[arg(long, value_enum, hide = true)]
+    platform: Option<DaemonPlatformArg>,
+}
+
+#[derive(Args, Debug)]
 struct EmitArgs {
     /// Recompute at most once per `hook_min_interval_secs`
     #[arg(long)]
@@ -496,6 +584,7 @@ fn run_config(args: ConfigArgs) -> Result<String, StoreError> {
         ConfigCommand::Set(set_args) => {
             let effective =
                 set_config_value(&paths, &set_args.key, &set_args.value, set_args.i_know)?;
+            let _ = notify_running_daemon(&paths);
             Ok(format!("{} = {effective}\n", set_args.key.trim()))
         }
     }
@@ -527,9 +616,13 @@ fn run_locate(args: LocateArgs) -> Result<String, StoreError> {
     let paths = ShikiPaths::resolve()?;
     let resolved = if let Some(pair) = args.set {
         let manual = ManualLocation::parse(&pair)?;
-        set_manual_location(&paths, manual)?
+        let out = set_manual_location(&paths, manual)?;
+        let _ = notify_running_daemon(&paths);
+        out
     } else if args.timezone {
-        set_timezone_location(&paths)?
+        let out = set_timezone_location(&paths)?;
+        let _ = notify_running_daemon(&paths);
+        out
     } else {
         resolve_location(&paths)?
     };
@@ -688,6 +781,89 @@ fn run_hook(args: HookArgs) -> Result<String, String> {
     }
 }
 
+fn run_pause(args: PauseArgs) -> Result<String, StoreError> {
+    let paths = ShikiPaths::resolve()?;
+    let now_utc = SystemClock.now();
+    let msg = match args.duration {
+        Some(raw) => {
+            let secs = parse_pause_duration_secs(&raw)?;
+            let state = set_pause(&paths, Some(secs), now_utc)?;
+            let until = state.paused_until.as_deref().unwrap_or("unknown");
+            format!("paused drift until {until} ({})\n", raw.trim())
+        }
+        None => {
+            let _ = set_pause(&paths, None, now_utc)?;
+            format!(
+                "paused drift indefinitely (run `{} resume` to resume)\n",
+                product::CLI_BIN
+            )
+        }
+    };
+    let _ = notify_running_daemon(&paths);
+    Ok(msg)
+}
+
+fn run_resume() -> Result<String, StoreError> {
+    let paths = ShikiPaths::resolve()?;
+    let _ = clear_pause(&paths)?;
+    let _ = notify_running_daemon(&paths);
+    Ok("resumed drift\n".to_string())
+}
+
+fn resolve_daemon_platform(arg: Option<DaemonPlatformArg>) -> PlatformKind {
+    arg.map_or_else(PlatformKind::current, DaemonPlatformArg::into_platform_kind)
+}
+
+fn run_daemon(args: DaemonArgs) -> Result<String, String> {
+    let paths = ShikiPaths::resolve().map_err(|e| e.to_string())?;
+    match args.command {
+        DaemonCommand::Install(inst) => {
+            let platform = resolve_daemon_platform(inst.platform);
+            let unit_path = match inst.unit_path {
+                Some(path) => path,
+                None => default_user_unit_path(platform)?,
+            };
+            let exe_path = match inst.exe_path {
+                Some(path) => path,
+                None => std::env::current_exe()
+                    .map_err(|e| format!("unable to determine current executable path: {e}"))?,
+            };
+            let activate = should_activate_service_manager(inst.no_activate);
+            let mut mgr = HostServiceManager;
+            install_daemon_unit(platform, &unit_path, &exe_path, activate, &mut mgr)
+        }
+        DaemonCommand::Uninstall(uninst) => {
+            let platform = resolve_daemon_platform(uninst.platform);
+            let unit_path = match uninst.unit_path {
+                Some(path) => path,
+                None => default_user_unit_path(platform)?,
+            };
+            let activate = should_activate_service_manager(uninst.no_activate);
+            let mut mgr = HostServiceManager;
+            uninstall_daemon_unit(&paths, platform, &unit_path, activate, &mut mgr)
+        }
+        DaemonCommand::Status(status_args) => {
+            let platform = resolve_daemon_platform(status_args.platform);
+            let unit_path = match status_args.unit_path {
+                Some(path) => path,
+                None => default_user_unit_path(platform)?,
+            };
+            let report = collect_daemon_status(&paths, platform, &unit_path, SystemClock.now())?;
+            if status_args.json {
+                let mut json = serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?;
+                json.push('\n');
+                Ok(json)
+            } else {
+                Ok(format_daemon_status_text(&report))
+            }
+        }
+        DaemonCommand::Run => {
+            run_foreground_daemon(&paths)?;
+            Ok(String::new())
+        }
+    }
+}
+
 fn run_emit(args: EmitArgs) -> Result<(), String> {
     let paths = ShikiPaths::resolve().map_err(|e| e.to_string())?;
     refresh_hook_store(
@@ -734,12 +910,15 @@ fn main() -> ExitCode {
             }
         },
         Some(Commands::Preview(args)) => print_result(run_preview(args)),
+        Some(Commands::Pause(args)) => print_result(run_pause(args)),
+        Some(Commands::Resume) => print_result(run_resume()),
         Some(Commands::Config(args)) => print_result(run_config(args)),
         Some(Commands::Locate(args)) => print_result(run_locate(args)),
         Some(Commands::Palette(palette_args)) => match palette_args.command {
             PaletteCommand::Check(args) => print_result(run_palette_check(args)),
         },
         Some(Commands::Hook(args)) => print_result(run_hook(args)),
+        Some(Commands::Daemon(args)) => print_result(run_daemon(args)),
         Some(Commands::Emit(args)) => match run_emit(args) {
             Ok(()) => ExitCode::SUCCESS,
             Err(err) => {
