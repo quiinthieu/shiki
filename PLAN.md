@@ -147,7 +147,7 @@ These are **targets**, checked in T17, not measured claims.
 Tick `[x]` when done. **M1 is the MVP**: new prompts drift via the hook. Everything after it is additive.
 
 ### M0 Skeleton
-- [ ] **T01 Workspace & tooling.** Stub crates, `product.rs`, toolchain, `deny.toml`, `ci.yml`, `lint-privacy.sh`, `DependencyGraphTests`.
+- [x] **T01 Workspace & tooling.** Stub crates, `product.rs`, toolchain, `deny.toml`, `ci.yml`, `lint-privacy.sh`, `DependencyGraphTests`.
   *AC:* CI green on macOS and Linux. `--version` uses `product.rs`. The lint catches a planted `std::net`.
 - [ ] **T02 Test harness.** `TestEnv`, fixed-instant helpers, fixture loaders, insta, a pty helper.
   *AC:* a lint proves `sk-core` has no `std::fs`, `SystemTime::now` or `std::env`. Sample tests pass 100× in a loop.
