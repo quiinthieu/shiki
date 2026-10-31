@@ -250,3 +250,23 @@ fn test_env_and_fixture_staging_pass_100x_in_a_loop() {
         );
     }
 }
+
+#[test]
+fn test_env_loads_noaa_solar_fixtures_for_pure_solar_model() {
+    let env = TestEnv::new();
+    let greenwich_raw = env
+        .fixtures()
+        .read_solar("noaa_greenwich.toml")
+        .expect("read NOAA Greenwich fixture via TestEnv");
+    assert!(greenwich_raw.contains("Capture URL: https://gml.noaa.gov/grad/solcalc/"));
+    assert!(greenwich_raw.contains("Capture date: 2026-10-31"));
+
+    let coords = sk_core::solar::Coordinates::new(51.4769, 0.0).expect("Greenwich coordinates");
+    let angles =
+        sk_core::solar::SolarEventAngles::from_model_toml(sk_core::solar::DEFAULT_MODEL_TOML)
+            .expect("load default solar event angles");
+    let equinox_noon = fixed_utc(2026, 3, 20, 12, 7, 26);
+    let snap = sk_core::solar::solar_snapshot(equinox_noon, coords, &angles);
+    assert_eq!(snap.polar_state, sk_core::solar::PolarState::Normal);
+    assert!((snap.noon_elevation_deg - 38.5021).abs() < 0.02);
+}

@@ -1,0 +1,206 @@
+# NOAA GML Solar Calculator reference fixture: Tokyo, Japan
+# Capture URL: https://gml.noaa.gov/grad/solcalc/
+# Calculation details & accuracy spec: https://gml.noaa.gov/grad/solcalc/calcdetails.html
+# Capture date: 2026-10-31
+#
+# Documented tolerances (NOAA calcdetails.html & 2-decimal UI display precision):
+# - elevation_deg: +/- 0.02 deg
+# - azimuth_deg: +/- 0.05 deg
+# - declination_deg: +/- 0.02 deg
+# - equation_of_time_min: +/- 0.02 min
+# - solar_noon_secs: +/- 30 s
+# - sunrise_sunset_secs: +/- 60 s (NOAA: 1 min within +/-72 deg lat, 10 min outside)
+
+capture_url = "https://gml.noaa.gov/grad/solcalc/"
+details_url = "https://gml.noaa.gov/grad/solcalc/calcdetails.html"
+capture_date = "2026-10-31"
+city = "Tokyo, Japan"
+hemisphere_ns = "north"
+region = "mid_latitude"
+latitude_deg = 35.6762
+longitude_deg = 139.6503
+standard_tz_offset_hours = 9
+
+[tolerances]
+elevation_deg = 0.02
+azimuth_deg = 0.05
+declination_deg = 0.02
+equation_of_time_min = 0.02
+solar_noon_secs = 30
+sunrise_sunset_secs = 60
+
+[[days]]
+date = "2026-03-20"
+season_anchor = "march_equinox"
+polar_state = "normal"
+solar_noon_utc = "2026-03-20T02:49:06Z"
+noaa_noonbox_local = "11:49:06"
+noon_elevation_deg = 54.140910
+sunrise_utc = "2026-03-19T20:45:46Z"
+noaa_risebox_local = "05:46"
+sunset_utc = "2026-03-20T08:52:42Z"
+noaa_setbox_local = "17:53"
+
+[[days]]
+date = "2026-06-21"
+season_anchor = "june_solstice"
+polar_state = "normal"
+solar_noon_utc = "2026-06-21T02:43:02Z"
+noaa_noonbox_local = "11:43:02"
+noon_elevation_deg = 77.765221
+sunrise_utc = "2026-06-20T19:25:49Z"
+noaa_risebox_local = "04:26"
+sunset_utc = "2026-06-21T10:00:28Z"
+noaa_setbox_local = "19:00"
+
+[[days]]
+date = "2026-09-22"
+season_anchor = "september_equinox"
+polar_state = "normal"
+solar_noon_utc = "2026-09-22T02:34:27Z"
+noaa_noonbox_local = "11:34:27"
+noon_elevation_deg = 54.685173
+sunrise_utc = "2026-09-21T20:28:59Z"
+noaa_risebox_local = "05:29"
+sunset_utc = "2026-09-22T08:39:01Z"
+noaa_setbox_local = "17:39"
+
+[[days]]
+date = "2026-12-21"
+season_anchor = "december_solstice"
+polar_state = "normal"
+solar_noon_utc = "2026-12-21T02:39:02Z"
+noaa_noonbox_local = "11:39:02"
+noon_elevation_deg = 30.915068
+sunrise_utc = "2026-12-20T21:47:01Z"
+noaa_risebox_local = "06:47"
+sunset_utc = "2026-12-21T07:31:32Z"
+noaa_setbox_local = "16:32"
+
+[[samples]]
+instant_utc = "2026-03-19T16:30:00Z"
+noaa_elbox = "dark"
+apparent_elevation_deg = -47.599895
+azimuth_deg = 39.215412
+declination_deg = -0.364522
+equation_of_time_min = -7.672850
+
+[[samples]]
+instant_utc = "2026-03-19T22:30:00Z"
+noaa_elbox = "20.15"
+apparent_elevation_deg = 20.152936
+azimuth_deg = 105.601201
+declination_deg = -0.265672
+equation_of_time_min = -7.599196
+
+[[samples]]
+instant_utc = "2026-03-20T03:15:00Z"
+noaa_elbox = "53.64"
+apparent_elevation_deg = 53.638341
+azimuth_deg = 191.030096
+declination_deg = -0.187423
+equation_of_time_min = -7.540791
+
+[[samples]]
+instant_utc = "2026-03-20T09:45:00Z"
+noaa_elbox = "-11.38"
+apparent_elevation_deg = -11.380924
+azimuth_deg = 278.228750
+declination_deg = -0.080356
+equation_of_time_min = -7.460737
+
+[[samples]]
+instant_utc = "2026-06-20T16:30:00Z"
+noaa_elbox = "dark"
+apparent_elevation_deg = -25.687620
+azimuth_deg = 27.265680
+declination_deg = 23.436631
+equation_of_time_min = -1.647443
+
+[[samples]]
+instant_utc = "2026-06-20T22:30:00Z"
+noaa_elbox = "34.57"
+apparent_elevation_deg = 34.574183
+azimuth_deg = 84.253264
+declination_deg = 23.437553
+equation_of_time_min = -1.701883
+
+[[samples]]
+instant_utc = "2026-06-21T03:15:00Z"
+noaa_elbox = "75.95"
+apparent_elevation_deg = 75.954547
+azimuth_deg = 211.577098
+declination_deg = 23.437977
+equation_of_time_min = -1.744966
+
+[[samples]]
+instant_utc = "2026-06-21T09:45:00Z"
+noaa_elbox = "2.21"
+apparent_elevation_deg = 2.205376
+azimuth_deg = 297.769054
+declination_deg = 23.438120
+equation_of_time_min = -1.803892
+
+[[samples]]
+instant_utc = "2026-09-21T16:30:00Z"
+noaa_elbox = "dark"
+apparent_elevation_deg = -44.900847
+azimuth_deg = 43.014969
+declination_deg = 0.513204
+equation_of_time_min = 6.973449
+
+[[samples]]
+instant_utc = "2026-09-21T22:30:00Z"
+noaa_elbox = "23.43"
+apparent_elevation_deg = 23.428007
+azimuth_deg = 107.506196
+declination_deg = 0.415989
+equation_of_time_min = 7.061972
+
+[[samples]]
+instant_utc = "2026-09-22T03:15:00Z"
+noaa_elbox = "53.43"
+apparent_elevation_deg = 53.426265
+azimuth_deg = 197.254897
+declination_deg = 0.339014
+equation_of_time_min = 7.131987
+
+[[samples]]
+instant_utc = "2026-09-22T09:45:00Z"
+noaa_elbox = "-14.14"
+apparent_elevation_deg = -14.140711
+azimuth_deg = 280.740417
+declination_deg = 0.233660
+equation_of_time_min = 7.227698
+
+[[samples]]
+instant_utc = "2026-12-20T16:30:00Z"
+noaa_elbox = "dark"
+apparent_elevation_deg = -63.077475
+azimuth_deg = 70.569706
+declination_deg = -23.432379
+equation_of_time_min = 2.325262
+
+[[samples]]
+instant_utc = "2026-12-20T22:30:00Z"
+noaa_elbox = "6.7"
+apparent_elevation_deg = 6.704696
+azimuth_deg = 125.141021
+declination_deg = -23.434447
+equation_of_time_min = 2.201550
+
+[[samples]]
+instant_utc = "2026-12-21T03:15:00Z"
+noaa_elbox = "30.31"
+apparent_elevation_deg = 30.314820
+azimuth_deg = 189.489392
+declination_deg = -23.435737
+equation_of_time_min = 2.103563
+
+[[samples]]
+instant_utc = "2026-12-21T09:45:00Z"
+noaa_elbox = "dark"
+apparent_elevation_deg = -26.239231
+azimuth_deg = 258.937965
+declination_deg = -23.437004
+equation_of_time_min = 1.969417
