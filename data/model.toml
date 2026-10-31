@@ -63,3 +63,26 @@ culmination_blend_half_width_deg = 8.0
 # Cancer and Capricorn, 23°26'21.448").
 # Source: Jean Meeus, Astronomical Algorithms (2nd ed., Ch. 22) / IAU J2000.0 obliquity.
 equator_fade_latitude_deg = 23.439291
+
+[scheduler]
+# Minimum daemon sleep interval in seconds (`PLAN.md` §7: "at most one wake per minute"; tunable).
+# Caps wake frequency during rapid twilight transitions or small `step_threshold` overrides so the
+# daemon never polls or exceeds one scheduled wake per minute (SIGHUP may still wake early).
+min_sleep_secs = 60
+
+# Default maximum daemon sleep cap in seconds (`PLAN.md` §7: "long at night or midday, capped by
+# max_sleep"; tunable via `config.toml` `max_sleep_secs`).
+# 1800 s (30 minutes) keeps night and midday idle cost near zero (<= 2 wakes/hour) while bounding
+# worst-case recovery after system suspend or timezone changes without polling.
+max_sleep_secs = 1800
+
+# Default perceptual OKLab step threshold (`ΔE_OK`) before the daemon or hook emits a new frame
+# (`PLAN.md` §3 & §7; tunable via `config.toml` `step_threshold`, calibrated in T17).
+step_threshold = 0.008
+
+# Coarse look-ahead probe stride in seconds used when bracketing the next `ΔE_OK >= step_threshold`
+# crossing inside `[min_sleep_secs, max_sleep_secs]` (tunable).
+# 300 s (5 minutes) is < 3% of the fastest equatorial equinox twilight transit (-18° to +24° takes
+# ~168 minutes), guaranteeing no twilight peak can be stepped over even for large `max_sleep_secs`,
+# while requiring at most 7 pure frame evaluations across a 30-minute night or midday window.
+probe_step_secs = 300
