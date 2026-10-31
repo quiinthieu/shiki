@@ -1,0 +1,8 @@
+# T02 fixture-loader smoke fixture (no solar math assertions).
+# Real NOAA solar calculator captures with capture URL and date are added in T03 (PLAN.md §0 #9).
+
+fixture_kind = "harness_smoke"
+city = "Greenwich (Royal Observatory)"
+latitude_deg = 51.4769
+longitude_deg = 0.0
+sample_utc = "2026-03-20T12:00:00Z"
