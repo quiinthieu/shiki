@@ -1,0 +1,414 @@
+# Bundled `shiki` (四季, "four seasons") palette (`PLAN.md` §4, T06).
+#
+# Cool nocturnal ink, warm rose-gold dawn vs deeper copper-ember dusk (`dawn != dusk`), and airy
+# seasonal daylight tints across spring (`s = 0.00`), summer (`s = 0.25`), autumn (`s = 0.50`), and
+# winter (`s = 0.75`).
+#
+# Accessibility notes (`PLAN.md` §4, T17):
+# - Every anchor and 2-D OKLCH blended frame meets WCAG AA contrast (`fg/bg >= 4.5:1`,
+#   `selection >= 4.5:1`, `ansi 1..=7, 9..=15 vs bg >= 3.0:1`).
+# - ANSI red (`1`, `9`) and ANSI green (`2`, `10`) are separated in perceptual lightness `L`
+#   (green lighter than red by >= 0.08 in OKLab `L`), not solely by hue.
+
+name = "shiki"
+description = "Cool nocturnal ink, warm rose dawn and copper dusk, and seasonal daylight"
+
+# ---------------------------------------------------------------------------
+# Spring (`s = 0.00`) — misty pine night, lilac-dew dawn, celadon daylight, plum-apricot dusk
+# ---------------------------------------------------------------------------
+
+[[anchors]]
+d = 0.00
+s = 0.00
+half = "both"
+bg = "#0e151a"
+fg = "#d5e0de"
+cursor = "#e5be7e"
+selection_bg = "#20333b"
+selection_fg = "#eef6f4"
+ansi = [
+  "#18232a", "#df7074", "#78cc9a", "#e4c27a",
+  "#68b2ec", "#c985de", "#5cc2c8", "#c9d5d4",
+  "#5a6b73", "#ef888b", "#95dfb2", "#f0d391",
+  "#84c4f6", "#da9eed", "#7ad5da", "#eef6f5",
+]
+
+[[anchors]]
+d = 0.40
+s = 0.00
+half = "dawn"
+bg = "#211f2a"
+fg = "#e6e0ea"
+cursor = "#eab888"
+selection_bg = "#383447"
+selection_fg = "#f7f3fa"
+ansi = [
+  "#2c2937", "#e67c82", "#82d2a2", "#ebd890",
+  "#78baf0", "#d494e6", "#6ccad0", "#d9d4df",
+  "#6e697c", "#f39499", "#9de3b8", "#f4df9e",
+  "#92caf8", "#e2acef", "#88dadf", "#f6f3f9",
+]
+
+[[anchors]]
+d = 0.75
+s = 0.00
+half = "dawn"
+bg = "#33312b"
+fg = "#f2efe6"
+cursor = "#f0be7a"
+selection_bg = "#4b483f"
+selection_fg = "#fbf9f3"
+ansi = [
+  "#3f3c35", "#ec8886", "#8ad9a6", "#f0d286",
+  "#82c2f4", "#da9ee8", "#74d2d4", "#e4e0d6",
+  "#7b776c", "#f69e9c", "#a4e7bc", "#f7de9c",
+  "#9ad0f9", "#e6b4f2", "#8fe0e2", "#fbf9f4",
+]
+
+[[anchors]]
+d = 1.00
+s = 0.00
+half = "both"
+bg = "#324440"
+fg = "#f5f9f7"
+cursor = "#f2c87e"
+selection_bg = "#1e2c29"
+selection_fg = "#f4faf7"
+ansi = [
+  "#263532", "#f2928c", "#92e4b0", "#f4d88c",
+  "#8ecbf9", "#e4aaf0", "#82dfe2", "#e2ece9",
+  "#7e938e", "#f9a8a2", "#aceec4", "#f9e3a4",
+  "#a6d7fc", "#eebef7", "#9ce8ea", "#f8fcfb",
+]
+
+[[anchors]]
+d = 0.75
+s = 0.00
+half = "dusk"
+bg = "#382b29"
+fg = "#f4eae6"
+cursor = "#f2b278"
+selection_bg = "#523f3c"
+selection_fg = "#fcf6f4"
+ansi = [
+  "#453533", "#ee8a86", "#8cd9a6", "#f2cf84",
+  "#84c0f2", "#de9ce6", "#76d0d4", "#e7dcd8",
+  "#826e6b", "#f7a09c", "#a6e6bc", "#f8dc9c",
+  "#9ccff8", "#e9b2f0", "#90dee2", "#fcf6f4",
+]
+
+[[anchors]]
+d = 0.40
+s = 0.00
+half = "dusk"
+bg = "#251c24"
+fg = "#e9dde4"
+cursor = "#e8aa78"
+selection_bg = "#3e303c"
+selection_fg = "#faf2f7"
+ansi = [
+  "#312530", "#e67a7e", "#80d09e", "#ecc67e",
+  "#76b6ee", "#d490e2", "#68c6cc", "#dcd0d7",
+  "#72626f", "#f29296", "#9be1b5", "#f4d594",
+  "#90c7f6", "#e1a8ed", "#84d7dc", "#f8f0f5",
+]
+
+# ---------------------------------------------------------------------------
+# Summer (`s = 0.25`) — ultramarine night, rose-violet dawn, cerulean daylight, coral-garnet dusk
+# ---------------------------------------------------------------------------
+
+[[anchors]]
+d = 0.00
+s = 0.25
+half = "both"
+bg = "#0d131d"
+fg = "#d4ddea"
+cursor = "#ebb974"
+selection_bg = "#1e2e44"
+selection_fg = "#eef4fc"
+ansi = [
+  "#17202e", "#e07078", "#76cc9e", "#e6c278",
+  "#64b4f2", "#c886e2", "#58c4d0", "#c8d2e0",
+  "#58677b", "#f08890", "#92e0b6", "#f2d38e",
+  "#80c6fa", "#d99ef0", "#76d7e2", "#eef4fb",
+]
+
+[[anchors]]
+d = 0.40
+s = 0.25
+half = "dawn"
+bg = "#231d29"
+fg = "#e9dfe8"
+cursor = "#f0b682"
+selection_bg = "#3c3246"
+selection_fg = "#faf3f9"
+ansi = [
+  "#2f2737", "#e87c84", "#82d2a4", "#eed088",
+  "#78bcf4", "#d694e8", "#68ccd6", "#dcd2dc",
+  "#72667b", "#f4949b", "#9de3bb", "#f6dd9c",
+  "#92ccf9", "#e4acef", "#84dce4", "#f9f2f8",
+]
+
+[[anchors]]
+d = 0.75
+s = 0.25
+half = "dawn"
+bg = "#362f28"
+fg = "#f4eee4"
+cursor = "#f4bc74"
+selection_bg = "#50463c"
+selection_fg = "#fcf9f2"
+ansi = [
+  "#433b32", "#ee8884", "#8ad9a8", "#f2d082",
+  "#82c4f6", "#dc9eea", "#72d4da", "#e7e0d4",
+  "#7f7568", "#f79e9a", "#a4e7be", "#f8dd98",
+  "#9cd2fa", "#e8b4f3", "#8ee2e7", "#fcf9f3",
+]
+
+[[anchors]]
+d = 1.00
+s = 0.25
+half = "both"
+bg = "#304355"
+fg = "#f5f8fc"
+cursor = "#f5c678"
+selection_bg = "#1d2a37"
+selection_fg = "#f3f8fd"
+ansi = [
+  "#243443", "#f4928e", "#90e4b4", "#f5d88a",
+  "#90cefc", "#e4aaf2", "#80e0e8", "#e1e9f2",
+  "#7b90a4", "#faa8a4", "#aaeec7", "#fae3a2",
+  "#a8dafd", "#eebff8", "#9ce9f0", "#f8fbfe",
+]
+
+[[anchors]]
+d = 0.75
+s = 0.25
+half = "dusk"
+bg = "#3b2a25"
+fg = "#f5eae4"
+cursor = "#f5ae72"
+selection_bg = "#563d36"
+selection_fg = "#fdf6f2"
+ansi = [
+  "#48342e", "#f08a84", "#8cd9a8", "#f4ce82",
+  "#84c2f4", "#e09ce8", "#74d2d8", "#e8dbd4",
+  "#866c65", "#f8a09a", "#a6e6be", "#f9db9a",
+  "#9ed0f9", "#eab2f1", "#90e0e5", "#fdf6f3",
+]
+
+[[anchors]]
+d = 0.40
+s = 0.25
+half = "dusk"
+bg = "#281b22"
+fg = "#ebdce1"
+cursor = "#eca674"
+selection_bg = "#432e39"
+selection_fg = "#fbf1f5"
+ansi = [
+  "#34242d", "#e87a7e", "#80d0a0", "#eec47c",
+  "#76b8f0", "#d690e4", "#66c8d0", "#ded0d5",
+  "#76606b", "#f39296", "#9be1b7", "#f5d492",
+  "#90c9f7", "#e3a8ee", "#82d9e0", "#faf0f4",
+]
+
+# ---------------------------------------------------------------------------
+# Autumn (`s = 0.50`) — charcoal-plum night, heather dawn, chestnut-ochre daylight, cinnabar dusk
+# ---------------------------------------------------------------------------
+
+[[anchors]]
+d = 0.00
+s = 0.50
+half = "both"
+bg = "#14121a"
+fg = "#dfd9e2"
+cursor = "#e6b272"
+selection_bg = "#2d2838"
+selection_fg = "#f6f2f8"
+ansi = [
+  "#1f1c27", "#e27272", "#7cc894", "#e6be74",
+  "#6ab0e8", "#ca84d8", "#5ec0c2", "#d2ccd6",
+  "#686272", "#f08a8a", "#96dca8", "#f2cf8c",
+  "#86c2f2", "#da9ce6", "#7cd3d5", "#f5f1f7",
+]
+
+[[anchors]]
+d = 0.40
+s = 0.50
+half = "dawn"
+bg = "#261e26"
+fg = "#ebe0e5"
+cursor = "#ecb27a"
+selection_bg = "#403340"
+selection_fg = "#faf3f6"
+ansi = [
+  "#332833", "#e87e7e", "#84ce9c", "#ecc87e",
+  "#7ab6ec", "#d692e0", "#6cc6c8", "#ded2d8",
+  "#766775", "#f49696", "#9fe0b2", "#f5d794",
+  "#94c7f5", "#e4aaec", "#88d7d9", "#faf2f6",
+]
+
+[[anchors]]
+d = 0.75
+s = 0.50
+half = "dawn"
+bg = "#392e26"
+fg = "#f5ece2"
+cursor = "#f2b86e"
+selection_bg = "#544439"
+selection_fg = "#fdf8f1"
+ansi = [
+  "#473930", "#ee8a82", "#8cd6a2", "#f2cc7e",
+  "#84bef0", "#dc9ce4", "#74cece", "#e8ded2",
+  "#837266", "#f7a098", "#a6e5b8", "#f8da94",
+  "#9ecefa", "#e9b2ee", "#90dcdd", "#fdf8f2",
+]
+
+[[anchors]]
+d = 1.00
+s = 0.50
+half = "both"
+bg = "#473b30"
+fg = "#faf6f0"
+cursor = "#f5c274"
+selection_bg = "#2d251d"
+selection_fg = "#fbf6ef"
+ansi = [
+  "#382e25", "#f6948c", "#94e4ac", "#f6d688",
+  "#92cafa", "#e6aaf0", "#84dede", "#ede5dc",
+  "#968678", "#fbaaa2", "#aeeec1", "#fae2a0",
+  "#aad8fc", "#f0bff7", "#9fe7e7", "#fdfaf6",
+]
+
+[[anchors]]
+d = 0.75
+s = 0.50
+half = "dusk"
+bg = "#3d2922"
+fg = "#f6eae2"
+cursor = "#f4aa6c"
+selection_bg = "#593c32"
+selection_fg = "#fdf5f0"
+ansi = [
+  "#4b332a", "#f08c82", "#8ed6a2", "#f4ca7e",
+  "#86bcf0", "#e09ae4", "#76ccce", "#eadad1",
+  "#886a60", "#f8a298", "#a8e5b8", "#f9d894",
+  "#a0ccf8", "#ebb0ee", "#92dadc", "#fdf6f1",
+]
+
+[[anchors]]
+d = 0.40
+s = 0.50
+half = "dusk"
+bg = "#2a1c1e"
+fg = "#ecdcdd"
+cursor = "#eaa26e"
+selection_bg = "#462f32"
+selection_fg = "#fbf1f2"
+ansi = [
+  "#372528", "#e87c7a", "#82ce9a", "#ecc278",
+  "#78b4ec", "#d68ee0", "#68c4c6", "#dfd0d1",
+  "#796063", "#f39492", "#9de0b0", "#f4d28e",
+  "#92c6f5", "#e3a6eb", "#84d5d7", "#fbf0f1",
+]
+
+# ---------------------------------------------------------------------------
+# Winter (`s = 0.75`) — obsidian-frost night, periwinkle dawn, glacial-slate daylight, amethyst dusk
+# ---------------------------------------------------------------------------
+
+[[anchors]]
+d = 0.00
+s = 0.75
+half = "both"
+bg = "#0c1118"
+fg = "#d7e0ec"
+cursor = "#e2be84"
+selection_bg = "#1d2b3c"
+selection_fg = "#f0f5fc"
+ansi = [
+  "#161e29", "#de727a", "#78ca9e", "#e2c27e",
+  "#66b4f0", "#c686e0", "#5cc4ce", "#cad4e2",
+  "#576576", "#ee8a92", "#94deb6", "#eed394",
+  "#82c6f9", "#d79eee", "#78d7e0", "#f0f5fc",
+]
+
+[[anchors]]
+d = 0.40
+s = 0.75
+half = "dawn"
+bg = "#1d1e2b"
+fg = "#e4e4ef"
+cursor = "#e6bc8c"
+selection_bg = "#323449"
+selection_fg = "#f5f5fc"
+ansi = [
+  "#272939", "#e47e86", "#80d0a4", "#e8cc88",
+  "#76bcf2", "#d294e6", "#6accd4", "#d6d7e4",
+  "#686a7f", "#f1969d", "#9be2ba", "#f3da9c",
+  "#90cdf9", "#e0acef", "#86dce3", "#f5f5fb",
+]
+
+[[anchors]]
+d = 0.75
+s = 0.75
+half = "dawn"
+bg = "#303036"
+fg = "#f0f0f5"
+cursor = "#ecc082"
+selection_bg = "#474750"
+selection_fg = "#f9f9fc"
+ansi = [
+  "#3c3c43", "#ea8a8e", "#88d8ac", "#eed28a",
+  "#80c4f5", "#d89eea", "#74d4dc", "#e2e2e8",
+  "#767681", "#f5a0a4", "#a2e6c0", "#f6df9e",
+  "#9ad2fa", "#e5b4f3", "#90e2e8", "#f9f9fc",
+]
+
+[[anchors]]
+d = 1.00
+s = 0.75
+half = "both"
+bg = "#35414e"
+fg = "#f6f8fb"
+cursor = "#f0c884"
+selection_bg = "#202831"
+selection_fg = "#f4f8fc"
+ansi = [
+  "#28323c", "#f29294", "#90e4b4", "#f4d88e",
+  "#8ecefb", "#e2aaf2", "#82e0e8", "#e3e9f0",
+  "#7f8d9c", "#f9a8aa", "#aaeec7", "#f9e3a6",
+  "#a6dafd", "#edbff8", "#9ee9f0", "#f9fbfd",
+]
+
+[[anchors]]
+d = 0.75
+s = 0.75
+half = "dusk"
+bg = "#342a32"
+fg = "#f2eaf0"
+cursor = "#eeb480"
+selection_bg = "#4d3e4a"
+selection_fg = "#fbf6fa"
+ansi = [
+  "#41353e", "#ec8a8e", "#8ad8aa", "#f0ce88",
+  "#82c2f4", "#dc9ce8", "#74d2da", "#e5dce3",
+  "#7d6d7a", "#f6a0a4", "#a4e6bf", "#f7dc9e",
+  "#9cd0f9", "#e7b2f1", "#90e0e7", "#fbf6fa",
+]
+
+[[anchors]]
+d = 0.40
+s = 0.75
+half = "dusk"
+bg = "#211b27"
+fg = "#e6dde9"
+cursor = "#e6ac7e"
+selection_bg = "#382f42"
+selection_fg = "#f8f2fa"
+ansi = [
+  "#2c2434", "#e47c84", "#7ed0a0", "#e8c682",
+  "#74b8f0", "#d290e4", "#66c8d0", "#d8d0dc",
+  "#6e6176", "#f1949b", "#99e1b7", "#f2d596",
+  "#8ec9f7", "#e0a8ee", "#82d9e0", "#f7f1f9",
+]

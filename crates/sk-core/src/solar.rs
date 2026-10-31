@@ -318,6 +318,7 @@ pub struct SolarSnapshot {
 
 #[derive(Copy, Clone)]
 struct OrbitalElements {
+    apparent_longitude_deg: f64,
     declination_deg: f64,
     equation_of_time_min: f64,
 }
@@ -355,8 +356,9 @@ fn orbital_elements(t: f64) -> OrbitalElements {
 
     let sun_true_long_deg = geom_mean_long_deg + eq_of_center_deg;
     let omega_rad = (125.04 - 1_934.136 * t).to_radians();
-    let sun_apparent_long_rad =
-        (sun_true_long_deg - 0.00569 - 0.00478 * omega_rad.sin()).to_radians();
+    let apparent_longitude_deg =
+        (sun_true_long_deg - 0.00569 - 0.00478 * omega_rad.sin()).rem_euclid(360.0);
+    let sun_apparent_long_rad = apparent_longitude_deg.to_radians();
 
     let obliq_seconds = 21.448 - t * (46.8150 + t * (0.00059 - t * 0.001_813));
     let mean_obliq_deg = 23.0 + (26.0 + (obliq_seconds / 60.0)) / 60.0;
@@ -378,8 +380,22 @@ fn orbital_elements(t: f64) -> OrbitalElements {
     let equation_of_time_min = 4.0 * etime_rad.to_degrees();
 
     OrbitalElements {
+        apparent_longitude_deg,
         declination_deg,
         equation_of_time_min,
+    }
+}
+
+/// Returns the Sun's apparent geocentric ecliptic longitude in `[0.0, 360.0)` degrees (`0°` March
+/// equinox, `90°` June solstice, `180°` September equinox, `270°` December solstice).
+#[must_use]
+pub fn apparent_solar_longitude_deg(instant: UtcInstant) -> f64 {
+    let t = julian_centuries_from_unix_secs(instant.as_unix_secs() as f64);
+    let lon = orbital_elements(t).apparent_longitude_deg;
+    if lon >= 360.0 || lon == 0.0 {
+        0.0
+    } else {
+        lon
     }
 }
 
@@ -683,6 +699,64 @@ pub fn solar_day_for_date(
     Ok(solar_day_for_index(solar_day_index, coords, angles))
 }
 
+pub(crate) fn solar_day_index_at(
+    instant: UtcInstant,
+    coords: Coordinates,
+    position: &SolarPosition,
+) -> i64 {
+    let true_solar_secs = (instant.as_unix_secs() as f64)
+        + coords.longitude_deg() * SECS_PER_DEGREE_LONGITUDE
+        + position.equation_of_time_min * SECS_PER_MINUTE_F64;
+    (true_solar_secs / SECS_PER_DAY_F64).floor() as i64
+}
+
+pub(crate) fn solar_day_summary_for_index(
+    solar_day_index: i64,
+    coords: Coordinates,
+    angles: &SolarEventAngles,
+) -> (f64, PolarState) {
+    let lon_deg = coords.longitude_deg();
+    let day_start_unix = (solar_day_index as f64) * SECS_PER_DAY_F64;
+
+    let mut noon_offset_min = 720.0 - 4.0 * lon_deg;
+    for _ in 0..3 {
+        let t_noon = julian_centuries_from_day_offset(solar_day_index, noon_offset_min);
+        let eq_min = orbital_elements(t_noon).equation_of_time_min;
+        noon_offset_min = 720.0 - 4.0 * lon_deg - eq_min;
+    }
+    let noon_unix_f64 = day_start_unix + noon_offset_min * SECS_PER_MINUTE_F64;
+    let noon_elevation_deg = solar_position_at_unix_f64(noon_unix_f64, coords).elevation_deg;
+
+    let sunrise = solve_altitude_crossing(
+        solar_day_index,
+        noon_offset_min,
+        coords,
+        angles.sunrise_sunset_deg,
+        true,
+    );
+    let sunset = solve_altitude_crossing(
+        solar_day_index,
+        noon_offset_min,
+        coords,
+        angles.sunrise_sunset_deg,
+        false,
+    );
+    let polar_state = match (sunrise, sunset) {
+        (AltitudeCrossing::AlwaysAbove, AltitudeCrossing::AlwaysAbove) => PolarState::PolarDay,
+        (AltitudeCrossing::AlwaysBelow, AltitudeCrossing::AlwaysBelow) => PolarState::PolarNight,
+        (AltitudeCrossing::At(_), _) | (_, AltitudeCrossing::At(_)) => PolarState::Normal,
+        _ => {
+            if noon_elevation_deg >= 0.0 {
+                PolarState::PolarDay
+            } else {
+                PolarState::PolarNight
+            }
+        }
+    };
+
+    (noon_elevation_deg, polar_state)
+}
+
 /// Computes the instantaneous solar position together with the enclosing local solar day's
 /// `noon_elevation_deg`, `polar_state`, and milestone `events` (`PLAN.md` §4).
 #[must_use]
@@ -692,10 +766,7 @@ pub fn solar_snapshot(
     angles: &SolarEventAngles,
 ) -> SolarSnapshot {
     let position = solar_position(instant, coords);
-    let true_solar_secs = (instant.as_unix_secs() as f64)
-        + coords.longitude_deg() * SECS_PER_DEGREE_LONGITUDE
-        + position.equation_of_time_min * SECS_PER_MINUTE_F64;
-    let solar_day_index = (true_solar_secs / SECS_PER_DAY_F64).floor() as i64;
+    let solar_day_index = solar_day_index_at(instant, coords, &position);
     let day = solar_day_for_index(solar_day_index, coords, angles);
 
     SolarSnapshot {
