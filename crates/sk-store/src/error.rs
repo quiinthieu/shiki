@@ -24,6 +24,15 @@ pub enum StoreError {
     #[error(transparent)]
     Location(#[from] sk_core::location::LocationError),
 
+    #[error(transparent)]
+    PaletteParse(#[from] sk_core::palette::PaletteParseError),
+
+    #[error("palette '{name}' not found (checked bundled palettes and {searched_path})")]
+    PaletteNotFound {
+        name: String,
+        searched_path: PathBuf,
+    },
+
     #[error("failed to parse configuration at {path}{location}: {message}")]
     ConfigParse {
         path: PathBuf,
