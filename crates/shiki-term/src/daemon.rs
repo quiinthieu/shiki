@@ -7,16 +7,20 @@ use rustix::fd::OwnedFd;
 use rustix::fs::{fcntl_getfl, fcntl_setfl, OFlags};
 use rustix::io::{fcntl_setfd, Errno, FdFlags};
 use rustix::pipe::pipe;
-use rustix::process::{getuid, kill_process, Pid, Signal};
+use rustix::process::{geteuid, getuid, kill_process, Pid, Signal};
 use serde::Serialize;
 use signal_hook::consts::signal::{SIGHUP, SIGINT, SIGTERM};
 use signal_hook::flag;
 use signal_hook::low_level::{pipe as sig_pipe, unregister};
 use signal_hook::SigId;
-use sk_core::palette::Frame;
 use sk_core::product;
 use sk_core::time::{Clock, UtcInstant};
 use sk_deliver::osc::encode_osc_frame;
+use sk_deliver::tmux::{encode_tmux_frame, CliTmuxPaneLister, TmuxPaneLister};
+use sk_deliver::tty::{
+    collect_candidate_paths, default_tty_scan_roots, deliver_payload_with_ops, PosixTtyOps, TtyOps,
+    TtyScanRoot,
+};
 use sk_store::clock::SystemClock;
 use sk_store::config::{load_config, DEFAULT_MAX_SLEEP_SECS};
 use sk_store::paths::{PlatformKind, ShikiPaths};
@@ -24,6 +28,7 @@ use sk_store::store::{
     daemon_tick, load_state, probe_running_daemon_pid, DaemonPidGuard, DaemonTickOutcome,
     PauseStatus, INDEFINITE_PAUSE,
 };
+use std::collections::HashSet;
 use std::env;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
@@ -37,6 +42,13 @@ use std::time::{Duration, Instant};
 /// Environment variable that disables live `launchctl` / `systemctl --user` calls during automated
 /// test runs so tests never touch the developer's or CI runner's host service manager.
 pub const NO_SERVICE_MANAGER_ENV: &str = "SHIKI_NO_SERVICE_MANAGER";
+
+/// Optional colon-separated candidate tty path override used by isolated PTY integration tests so
+/// subprocess `daemon run` tests never broadcast to the developer's live host terminal sessions.
+pub const TTY_PATHS_OVERRIDE_ENV: &str = "SHIKI_TTY_PATHS";
+
+/// Optional `tmux -S <socket>` override used by isolated `tmux` integration tests.
+pub const TMUX_SOCKET_OVERRIDE_ENV: &str = "SHIKI_TMUX_SOCKET";
 
 const MANAGED_TAG_PREFIX: &str = "shiki-managed: created-dirs=";
 static UNIT_TEMP_SEQ: AtomicU64 = AtomicU64::new(0);
@@ -215,25 +227,175 @@ impl DaemonSleeper for SignalWakePipe {
     }
 }
 
-/// Runs the predicted-step scheduler loop until `sleeper` yields [`WakeReason::Shutdown`].
-pub fn run_daemon_loop<C, S, D>(
+type DeviceIdentity = (u64, u64, u64);
+
+/// Tracks delivered UID-owned tty and `tmux` pane devices across daemon ticks (`PLAN.md` §3, §5, §7):
+/// - On [`DaemonTickOutcome::Updated`], delivers the new frame in one single `write(2)` per session.
+/// - On [`DaemonTickOutcome::Unchanged`], performs **zero writes** to existing sessions while
+///   catching up any newly opened terminal tab or `tmux` pane (`PLAN.md` §3: *"or a new session appeared"*).
+/// - When both `tty-broadcast` and `tmux` are enabled, `tmux` panes receive at most one single
+///   write per tick (never duplicated by `tty-broadcast`).
+pub struct DaemonDeliveryDriver<L = CliTmuxPaneLister, O = PosixTtyOps> {
+    tty_roots: Vec<TtyScanRoot>,
+    tmux_lister: L,
+    ops: O,
+    expected_uid: u32,
+    known_tty_devices: HashSet<DeviceIdentity>,
+    known_tmux_devices: HashSet<DeviceIdentity>,
+    last_tmux_passthrough: bool,
+}
+
+impl DaemonDeliveryDriver<CliTmuxPaneLister, PosixTtyOps> {
+    #[must_use]
+    pub fn from_env() -> Self {
+        let tty_roots = match env::var_os(TTY_PATHS_OVERRIDE_ENV) {
+            Some(raw) if !raw.is_empty() => {
+                vec![TtyScanRoot::ExplicitPaths(env::split_paths(&raw).collect())]
+            }
+            _ => default_tty_scan_roots(),
+        };
+        let tmux_lister = match env::var_os(TMUX_SOCKET_OVERRIDE_ENV) {
+            Some(sock) if !sock.is_empty() => CliTmuxPaneLister::with_socket_path(sock),
+            _ => CliTmuxPaneLister::new(),
+        };
+        Self::new(tty_roots, tmux_lister, PosixTtyOps, geteuid().as_raw())
+    }
+}
+
+impl<L: TmuxPaneLister, O: TtyOps> DaemonDeliveryDriver<L, O> {
+    #[must_use]
+    pub fn new(tty_roots: Vec<TtyScanRoot>, tmux_lister: L, ops: O, expected_uid: u32) -> Self {
+        Self {
+            tty_roots,
+            tmux_lister,
+            ops,
+            expected_uid,
+            known_tty_devices: HashSet::new(),
+            known_tmux_devices: HashSet::new(),
+            last_tmux_passthrough: false,
+        }
+    }
+
+    #[cfg(test)]
+    #[must_use]
+    pub const fn ops(&self) -> &O {
+        &self.ops
+    }
+
+    pub fn handle_tick_outcome(&mut self, paths: &ShikiPaths, outcome: &DaemonTickOutcome) {
+        let (force_all, fallback_colors) = match outcome {
+            DaemonTickOutcome::Paused { .. } => return,
+            DaemonTickOutcome::Updated { ref frame, .. } => (true, frame.colors),
+            DaemonTickOutcome::Unchanged { ref frame, .. } => (false, frame.colors),
+        };
+
+        let Ok(config) = load_config(paths) else {
+            return;
+        };
+        let tty_enabled = config.effective_tty_broadcast();
+        let tmux_passthrough = config.effective_tmux_passthrough();
+        let tmux_enabled = config.effective_tmux() || tmux_passthrough;
+
+        if !tty_enabled {
+            self.known_tty_devices.clear();
+        }
+        if !tmux_enabled {
+            self.known_tmux_devices.clear();
+        }
+        if tmux_passthrough != self.last_tmux_passthrough {
+            self.known_tmux_devices.clear();
+        }
+        self.last_tmux_passthrough = tmux_passthrough;
+
+        if !tty_enabled && !tmux_enabled {
+            return;
+        }
+
+        let colors = if force_all {
+            fallback_colors
+        } else {
+            load_state(paths)
+                .ok()
+                .and_then(|s| s.last_colors)
+                .unwrap_or(fallback_colors)
+        };
+
+        let mut current_tmux_devs: HashSet<DeviceIdentity> = HashSet::new();
+        if tmux_enabled {
+            let pane_paths = self.tmux_lister.list_pane_ttys().unwrap_or_default();
+            let mut tmux_targets = Vec::new();
+            for path in pane_paths {
+                let Ok(stat) = self.ops.lstat(&path) else {
+                    continue;
+                };
+                if stat.is_symlink || !stat.is_char_device || stat.uid != self.expected_uid {
+                    continue;
+                }
+                let dev_id = (stat.dev, stat.ino, stat.rdev);
+                if current_tmux_devs.insert(dev_id)
+                    && (force_all || !self.known_tmux_devices.contains(&dev_id))
+                {
+                    tmux_targets.push(path);
+                }
+            }
+            if !tmux_targets.is_empty() {
+                let payload = encode_tmux_frame(&colors, tmux_passthrough);
+                let _ =
+                    deliver_payload_with_ops(&tmux_targets, self.expected_uid, &payload, &self.ops);
+            }
+            self.known_tmux_devices = current_tmux_devs.clone();
+        }
+
+        if tty_enabled {
+            let candidates = collect_candidate_paths(&self.tty_roots, &self.ops);
+            let mut current_tty_devs: HashSet<DeviceIdentity> = HashSet::new();
+            let mut tty_targets = Vec::new();
+            for path in candidates {
+                let Ok(stat) = self.ops.lstat(&path) else {
+                    continue;
+                };
+                if stat.is_symlink || !stat.is_char_device || stat.uid != self.expected_uid {
+                    continue;
+                }
+                let dev_id = (stat.dev, stat.ino, stat.rdev);
+                if !current_tty_devs.insert(dev_id) {
+                    continue;
+                }
+                if tmux_enabled && current_tmux_devs.contains(&dev_id) {
+                    continue;
+                }
+                if force_all || !self.known_tty_devices.contains(&dev_id) {
+                    tty_targets.push(path);
+                }
+            }
+            if !tty_targets.is_empty() {
+                let payload = encode_osc_frame(&colors);
+                let _ =
+                    deliver_payload_with_ops(&tty_targets, self.expected_uid, &payload, &self.ops);
+            }
+            self.known_tty_devices = current_tty_devs;
+        }
+    }
+}
+
+/// Runs the predicted-step scheduler loop until `sleeper` yields [`WakeReason::Shutdown`],
+/// invoking `on_outcome` after each [`daemon_tick`].
+pub fn run_daemon_loop_with_outcome<C, S, H>(
     paths: &ShikiPaths,
     clock: &C,
     sleeper: &mut S,
-    mut on_updated: D,
+    mut on_outcome: H,
 ) -> Result<(), String>
 where
     C: Clock,
     S: DaemonSleeper,
-    D: FnMut(&Frame),
+    H: FnMut(&DaemonTickOutcome),
 {
     loop {
         let now: UtcInstant = clock.now();
         let sleep_secs = match daemon_tick(paths, now, encode_osc_frame) {
             Ok(outcome) => {
-                if let DaemonTickOutcome::Updated { ref frame, .. } = outcome {
-                    on_updated(frame);
-                }
+                on_outcome(&outcome);
                 outcome.sleep_secs()
             }
             Err(err) => {
@@ -252,11 +414,34 @@ where
     }
 }
 
+/// Runs the predicted-step scheduler loop until `sleeper` yields [`WakeReason::Shutdown`].
+#[cfg(test)]
+pub fn run_daemon_loop<C, S, D>(
+    paths: &ShikiPaths,
+    clock: &C,
+    sleeper: &mut S,
+    mut on_updated: D,
+) -> Result<(), String>
+where
+    C: Clock,
+    S: DaemonSleeper,
+    D: FnMut(&sk_core::palette::Frame),
+{
+    run_daemon_loop_with_outcome(paths, clock, sleeper, |outcome| {
+        if let DaemonTickOutcome::Updated { ref frame, .. } = outcome {
+            on_updated(frame);
+        }
+    })
+}
+
 /// Runs `daemon run` in the foreground, holding an exclusive `flock` on `daemon.pid`.
 pub fn run_foreground_daemon(paths: &ShikiPaths) -> Result<(), String> {
     let _pid_guard = DaemonPidGuard::acquire(paths).map_err(|e| e.to_string())?;
     let mut wake_pipe = SignalWakePipe::install().map_err(|e| e.to_string())?;
-    run_daemon_loop(paths, &SystemClock, &mut wake_pipe, |_frame| {})
+    let mut driver = DaemonDeliveryDriver::from_env();
+    run_daemon_loop_with_outcome(paths, &SystemClock, &mut wake_pipe, |outcome| {
+        driver.handle_tick_outcome(paths, outcome);
+    })
 }
 
 fn pid_from_u32(raw_pid: u32) -> Option<Pid> {
@@ -940,5 +1125,144 @@ mod tests {
                 ]
             );
         }
+    }
+
+    #[test]
+    fn delivery_driver_catches_up_new_sessions_and_deduplicates_tmux_panes() {
+        use rustix::pty::{grantpt, openpt, ptsname, unlockpt, OpenptFlags};
+        use sk_deliver::tty::TtyStat;
+        use sk_deliver::DeliverError;
+        use std::cell::RefCell;
+        use std::ffi::{OsStr, OsString};
+        use std::os::unix::ffi::OsStrExt;
+
+        fn open_mini_pty() -> (OwnedFd, OwnedFd, PathBuf) {
+            let ctrl = openpt(OpenptFlags::RDWR | OpenptFlags::NOCTTY).unwrap();
+            grantpt(&ctrl).unwrap();
+            unlockpt(&ctrl).unwrap();
+            let c_name = ptsname(&ctrl, Vec::new()).unwrap();
+            let path = PathBuf::from(OsStr::from_bytes(c_name.as_bytes()));
+            let rep = rustix::fs::open(
+                &c_name,
+                OFlags::RDWR | OFlags::NOCTTY | OFlags::CLOEXEC,
+                rustix::fs::Mode::empty(),
+            )
+            .unwrap();
+            let flags = fcntl_getfl(&ctrl).unwrap();
+            fcntl_setfl(&ctrl, flags | OFlags::NONBLOCK).unwrap();
+            (ctrl, rep, path)
+        }
+
+        #[derive(Default)]
+        struct RecordingOps {
+            inner: PosixTtyOps,
+            writes: RefCell<Vec<usize>>,
+        }
+
+        impl TtyOps for RecordingOps {
+            fn read_dir_names(&self, dir: &Path) -> io::Result<Vec<OsString>> {
+                self.inner.read_dir_names(dir)
+            }
+            fn lstat(&self, path: &Path) -> io::Result<TtyStat> {
+                self.inner.lstat(path)
+            }
+            fn open_tty(&self, path: &Path) -> io::Result<OwnedFd> {
+                self.inner.open_tty(path)
+            }
+            fn fstat(&self, fd: &OwnedFd) -> io::Result<TtyStat> {
+                self.inner.fstat(fd)
+            }
+            fn isatty(&self, fd: &OwnedFd) -> bool {
+                self.inner.isatty(fd)
+            }
+            fn write_single(&self, fd: &OwnedFd, payload: &[u8]) -> io::Result<usize> {
+                let n = self.inner.write_single(fd, payload)?;
+                self.writes.borrow_mut().push(n);
+                Ok(n)
+            }
+        }
+
+        struct DynamicLister(RefCell<Vec<PathBuf>>);
+        impl TmuxPaneLister for DynamicLister {
+            fn list_pane_ttys(&self) -> Result<Vec<PathBuf>, DeliverError> {
+                Ok(self.0.borrow().clone())
+            }
+        }
+
+        let tmp = TempDir::new().unwrap();
+        let paths = ShikiPaths::from_shiki_home(tmp.path());
+        paths.ensure_dirs().unwrap();
+        set_manual_location(&paths, ManualLocation::new(35.7, 139.7).unwrap()).unwrap();
+        set_config_value(&paths, "delivery.tty_broadcast", "true", false).unwrap();
+
+        // Use a synthetic `/dev/pts`-style directory containing symlinks?... No, real PTY paths live
+        // in `/dev`, so test dynamic session arrival by updating `DynamicLister` / `tty_roots` via a
+        // directory or explicit paths. Let's test `tmux` + `tty_broadcast` together!
+        fn drain_ctrl(ctrl: &OwnedFd) -> Vec<u8> {
+            let mut out = Vec::new();
+            let mut buf = [0_u8; 2048];
+            while let Ok(n) = rustix::io::read(ctrl, &mut buf) {
+                if n == 0 {
+                    break;
+                }
+                out.extend_from_slice(&buf[..n]);
+            }
+            out
+        }
+
+        let (ctrl1, _rep1, pty1_path) = open_mini_pty();
+        let (ctrl2, _rep2, pty2_path) = open_mini_pty();
+
+        let lister = DynamicLister(RefCell::new(Vec::new()));
+        let mut driver = DaemonDeliveryDriver::new(
+            vec![TtyScanRoot::ExplicitPaths(vec![pty1_path.clone()])],
+            lister,
+            RecordingOps::default(),
+            geteuid().as_raw(),
+        );
+
+        let t0 = UtcInstant::utc_ymd_hms(2026, 3, 20, 15, 0, 0);
+        let outcome0 = daemon_tick(&paths, t0, encode_osc_frame).unwrap();
+        assert!(matches!(outcome0, DaemonTickOutcome::Updated { .. }));
+        driver.handle_tick_outcome(&paths, &outcome0);
+        assert_eq!(*driver.ops().writes.borrow(), vec![383]);
+        assert_eq!(drain_ctrl(&ctrl1).len(), 383);
+
+        // Unchanged tick 60s later with no new sessions -> ZERO writes (`PLAN.md` §7).
+        let outcome1 = daemon_tick(&paths, t0.add_secs(60), encode_osc_frame).unwrap();
+        assert!(matches!(outcome1, DaemonTickOutcome::Unchanged { .. }));
+        driver.handle_tick_outcome(&paths, &outcome1);
+        assert_eq!(
+            *driver.ops().writes.borrow(),
+            vec![383],
+            "unchanged tick with no new sessions must perform zero writes"
+        );
+        assert!(drain_ctrl(&ctrl1).is_empty());
+
+        // Enable `tmux` with passthrough and open `pty2` as a new tmux pane on an Unchanged tick:
+        // ONLY `pty2` receives the 813-byte combined tmux+DCS payload (`pty1` gets 0 writes).
+        set_config_value(&paths, "delivery.tmux", "true", false).unwrap();
+        set_config_value(&paths, "delivery.tmux_passthrough", "true", false).unwrap();
+        driver.tty_roots = vec![TtyScanRoot::ExplicitPaths(vec![
+            pty1_path.clone(),
+            pty2_path.clone(),
+        ])];
+        *driver.tmux_lister.0.borrow_mut() = vec![pty2_path.clone()];
+
+        let outcome2 = daemon_tick(&paths, t0.add_secs(120), encode_osc_frame).unwrap();
+        driver.handle_tick_outcome(&paths, &outcome2);
+        assert_eq!(*driver.ops().writes.borrow(), vec![383, 813]);
+        assert!(drain_ctrl(&ctrl1).is_empty());
+        assert_eq!(drain_ctrl(&ctrl2).len(), 813);
+
+        // Next `Updated` tick (dawn): `pty2` gets 1 single 813-byte write via `tmux`, and `pty1`
+        // gets 1 single 383-byte write via `tty_broadcast` (zero duplicate write on `pty2`!).
+        let dawn = UtcInstant::utc_ymd_hms(2026, 3, 20, 20, 35, 0);
+        let outcome3 = daemon_tick(&paths, dawn, encode_osc_frame).unwrap();
+        assert!(matches!(outcome3, DaemonTickOutcome::Updated { .. }));
+        driver.handle_tick_outcome(&paths, &outcome3);
+        assert_eq!(*driver.ops().writes.borrow(), vec![383, 813, 813, 383]);
+        assert_eq!(drain_ctrl(&ctrl1).len(), 383);
+        assert_eq!(drain_ctrl(&ctrl2).len(), 813);
     }
 }

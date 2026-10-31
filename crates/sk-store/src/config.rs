@@ -22,7 +22,7 @@ pub const DEFAULT_STEP_THRESHOLD: f64 = DEFAULT_DAEMON_STEP_THRESHOLD;
 pub const DEFAULT_HOOK_MIN_INTERVAL_SECS: u64 = MIN_DAEMON_SLEEP_SECS;
 pub const DEFAULT_MAX_SLEEP_SECS: u64 = DEFAULT_DAEMON_MAX_SLEEP_SECS;
 
-pub const VALID_CONFIG_KEYS: &str = "palette, step_threshold, hook_min_interval_secs, max_sleep_secs, location.mode, location.latitude, location.longitude, location.timezone, contrast.fg_bg_min_ratio, contrast.ansi_bg_min_ratio, delivery.tty_broadcast, delivery.tmux_passthrough";
+pub const VALID_CONFIG_KEYS: &str = "palette, step_threshold, hook_min_interval_secs, max_sleep_secs, location.mode, location.latitude, location.longitude, location.timezone, contrast.fg_bg_min_ratio, contrast.ansi_bg_min_ratio, delivery.tty_broadcast, delivery.tmux, delivery.tmux_passthrough";
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct LocationSection {
@@ -60,6 +60,8 @@ pub struct DeliverySection {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tty_broadcast: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tmux: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tmux_passthrough: Option<bool>,
     #[serde(flatten)]
     pub extra: BTreeMap<String, toml::Value>,
@@ -68,7 +70,10 @@ pub struct DeliverySection {
 impl DeliverySection {
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.tty_broadcast.is_none() && self.tmux_passthrough.is_none() && self.extra.is_empty()
+        self.tty_broadcast.is_none()
+            && self.tmux.is_none()
+            && self.tmux_passthrough.is_none()
+            && self.extra.is_empty()
     }
 }
 
@@ -117,6 +122,11 @@ impl AppConfig {
     #[must_use]
     pub fn effective_tty_broadcast(&self) -> bool {
         self.delivery.tty_broadcast.unwrap_or(false)
+    }
+
+    #[must_use]
+    pub fn effective_tmux(&self) -> bool {
+        self.delivery.tmux.unwrap_or(false)
     }
 
     #[must_use]
@@ -346,6 +356,7 @@ fn get_config_value_from(config: &AppConfig, key: &str) -> Result<String, StoreE
         "contrast.fg_bg_min_ratio" => Ok(format!("{}", effective_contrast.fg_bg_min_ratio)),
         "contrast.ansi_bg_min_ratio" => Ok(format!("{}", effective_contrast.ansi_bg_min_ratio)),
         "delivery.tty_broadcast" => Ok(format!("{}", config.effective_tty_broadcast())),
+        "delivery.tmux" => Ok(format!("{}", config.effective_tmux())),
         "delivery.tmux_passthrough" => Ok(format!("{}", config.effective_tmux_passthrough())),
         _ => Err(StoreError::UnknownConfigKey {
             key: key.to_string(),
@@ -363,7 +374,7 @@ pub fn get_config_value(paths: &ShikiPaths, key: &str) -> Result<String, StoreEr
 
 /// Lists all supported configuration keys and their effective values in deterministic order.
 pub fn list_config_entries(paths: &ShikiPaths) -> Result<Vec<(&'static str, String)>, StoreError> {
-    const KEYS: [&str; 12] = [
+    const KEYS: [&str; 13] = [
         "palette",
         "step_threshold",
         "hook_min_interval_secs",
@@ -375,6 +386,7 @@ pub fn list_config_entries(paths: &ShikiPaths) -> Result<Vec<(&'static str, Stri
         "contrast.fg_bg_min_ratio",
         "contrast.ansi_bg_min_ratio",
         "delivery.tty_broadcast",
+        "delivery.tmux",
         "delivery.tmux_passthrough",
     ];
     let config = load_config(paths)?;
@@ -573,6 +585,9 @@ pub fn set_config_value(
         }
         "delivery.tty_broadcast" => {
             config.delivery.tty_broadcast = Some(parse_bool_value(key, trimmed)?);
+        }
+        "delivery.tmux" => {
+            config.delivery.tmux = Some(parse_bool_value(key, trimmed)?);
         }
         "delivery.tmux_passthrough" => {
             config.delivery.tmux_passthrough = Some(parse_bool_value(key, trimmed)?);

@@ -1,7 +1,12 @@
+mod backend;
 mod daemon;
 mod hook;
 mod preview;
 
+use backend::{
+    collect_backend_list, disable_backend, enable_backend, format_backend_list_text,
+    is_inside_tmux_env, BackendTarget,
+};
 use clap::{Args, Parser, Subcommand};
 use daemon::{
     collect_daemon_status, default_user_unit_path, format_daemon_status_text, install_daemon_unit,
@@ -20,6 +25,7 @@ use sk_core::product;
 use sk_core::solar::{Coordinates, PolarState};
 use sk_core::time::{Clock, UtcInstant};
 use sk_deliver::osc::{encode_osc_frame, OscBackend};
+use sk_deliver::tmux::{encode_tmux_frame, encode_tmux_reset};
 use sk_deliver::Backend;
 use sk_store::clock::SystemClock;
 use sk_store::config::{
@@ -33,7 +39,7 @@ use sk_store::paths::{PlatformKind, ShikiPaths};
 use sk_store::store::{
     clear_pause, persist_applied_frame_at, persist_reset, refresh_hook_store, set_pause, Snapshot,
 };
-use std::io;
+use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -73,6 +79,8 @@ enum Commands {
     Hook(HookArgs),
     /// Install, uninstall, inspect, or run the per-user background daemon
     Daemon(DaemonArgs),
+    /// List, enable, or disable terminal colour delivery backends (`tty-broadcast`, `tmux`)
+    Backend(BackendArgs),
     /// Internal prompt-hook helper that refreshes `current.seq` and `current.gen`
     #[command(name = "_emit", hide = true)]
     Emit(EmitArgs),
@@ -386,6 +394,51 @@ struct DaemonStatusArgs {
 }
 
 #[derive(Args, Debug)]
+struct BackendArgs {
+    #[command(subcommand)]
+    command: BackendCommand,
+}
+
+#[derive(Subcommand, Debug)]
+enum BackendCommand {
+    /// List delivery backends and whether each is enabled
+    List(BackendListArgs),
+    /// Enable an opt-in delivery backend (`tty-broadcast` or `tmux`)
+    Enable(BackendEnableArgs),
+    /// Disable an opt-in delivery backend (`tty-broadcast` or `tmux`)
+    Disable(BackendDisableArgs),
+}
+
+#[derive(Args, Debug)]
+struct BackendListArgs {
+    /// Output coordinate-free backend status as pretty JSON
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Args, Debug)]
+struct BackendEnableArgs {
+    /// Delivery backend to enable (`tty-broadcast` or `tmux`)
+    #[arg(value_enum)]
+    backend: BackendTarget,
+
+    /// Also forward unwrapped OSC sequences through `tmux` DCS passthrough (`\ePtmux;…\e\\`)
+    #[arg(long, conflicts_with = "no_passthrough")]
+    passthrough: bool,
+
+    /// Keep `tmux` delivery per-pane only (`delivery.tmux_passthrough = false`)
+    #[arg(long, conflicts_with = "passthrough")]
+    no_passthrough: bool,
+}
+
+#[derive(Args, Debug)]
+struct BackendDisableArgs {
+    /// Delivery backend to disable (`tty-broadcast` or `tmux`)
+    #[arg(value_enum)]
+    backend: BackendTarget,
+}
+
+#[derive(Args, Debug)]
 struct EmitArgs {
     /// Recompute at most once per `hook_min_interval_secs`
     #[arg(long)]
@@ -504,17 +557,34 @@ fn run_apply(args: ApplyArgs) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
 
     let stdout = io::stdout();
-    let mut backend = OscBackend::new(stdout.lock());
-    backend.deliver(&frame).map_err(|e| e.to_string())
+    let mut handle = stdout.lock();
+    if is_inside_tmux_env() && config.effective_tmux_passthrough() {
+        let combined = encode_tmux_frame(&frame.colors, true);
+        handle.write_all(&combined).map_err(|e| e.to_string())?;
+        handle.flush().map_err(|e| e.to_string())
+    } else {
+        let mut backend = OscBackend::new(handle);
+        backend.deliver(&frame).map_err(|e| e.to_string())
+    }
 }
 
 fn run_reset() -> Result<(), String> {
     let paths = ShikiPaths::resolve().map_err(|e| e.to_string())?;
+    let passthrough = load_config(&paths)
+        .map(|cfg| cfg.effective_tmux_passthrough())
+        .unwrap_or(false);
     persist_reset(&paths, SystemClock.now()).map_err(|e| e.to_string())?;
 
     let stdout = io::stdout();
-    let mut backend = OscBackend::new(stdout.lock());
-    backend.reset().map_err(|e| e.to_string())
+    let mut handle = stdout.lock();
+    if is_inside_tmux_env() && passthrough {
+        let combined = encode_tmux_reset(true);
+        handle.write_all(&combined).map_err(|e| e.to_string())?;
+        handle.flush().map_err(|e| e.to_string())
+    } else {
+        let mut backend = OscBackend::new(handle);
+        backend.reset().map_err(|e| e.to_string())
+    }
 }
 
 fn run_preview(args: PreviewArgs) -> Result<String, String> {
@@ -864,6 +934,39 @@ fn run_daemon(args: DaemonArgs) -> Result<String, String> {
     }
 }
 
+fn run_backend(args: BackendArgs) -> Result<String, String> {
+    let paths = ShikiPaths::resolve().map_err(|e| e.to_string())?;
+    match args.command {
+        BackendCommand::List(list_args) => {
+            let report = collect_backend_list(&paths)?;
+            if list_args.json {
+                let mut json = serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?;
+                json.push('\n');
+                Ok(json)
+            } else {
+                Ok(format_backend_list_text(&report))
+            }
+        }
+        BackendCommand::Enable(enable_args) => {
+            let passthrough_override = if enable_args.passthrough {
+                Some(true)
+            } else if enable_args.no_passthrough {
+                Some(false)
+            } else {
+                None
+            };
+            let msg = enable_backend(&paths, enable_args.backend, passthrough_override)?;
+            let _ = notify_running_daemon(&paths);
+            Ok(msg)
+        }
+        BackendCommand::Disable(disable_args) => {
+            let msg = disable_backend(&paths, disable_args.backend)?;
+            let _ = notify_running_daemon(&paths);
+            Ok(msg)
+        }
+    }
+}
+
 fn run_emit(args: EmitArgs) -> Result<(), String> {
     let paths = ShikiPaths::resolve().map_err(|e| e.to_string())?;
     refresh_hook_store(
@@ -919,6 +1022,7 @@ fn main() -> ExitCode {
         },
         Some(Commands::Hook(args)) => print_result(run_hook(args)),
         Some(Commands::Daemon(args)) => print_result(run_daemon(args)),
+        Some(Commands::Backend(args)) => print_result(run_backend(args)),
         Some(Commands::Emit(args)) => match run_emit(args) {
             Ok(()) => ExitCode::SUCCESS,
             Err(err) => {

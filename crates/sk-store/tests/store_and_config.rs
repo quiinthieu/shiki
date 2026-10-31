@@ -36,6 +36,11 @@ fn config_get_and_set_validate_values_enforce_i_know_and_preserve_unknown_keys()
         get_config_value(paths, "delivery.tty_broadcast").unwrap(),
         "false"
     );
+    assert_eq!(get_config_value(paths, "delivery.tmux").unwrap(), "false");
+    assert_eq!(
+        get_config_value(paths, "delivery.tmux_passthrough").unwrap(),
+        "false"
+    );
 
     let all_defaults = list_config_entries(paths).unwrap();
     assert!(all_defaults
@@ -90,7 +95,15 @@ fn config_get_and_set_validate_values_enforce_i_know_and_preserve_unknown_keys()
         .expect_err("latitude > 90 must fail");
     assert!(!out_of_range.to_string().contains("95.4321"));
 
-    // Unknown key is rejected cleanly.
+    // Unknown key is rejected cleanly, while delivery booleans round-trip.
+    set_config_value(paths, "delivery.tmux", "true", false).unwrap();
+    set_config_value(paths, "delivery.tmux_passthrough", "on", false).unwrap();
+    assert_eq!(get_config_value(paths, "delivery.tmux").unwrap(), "true");
+    assert_eq!(
+        get_config_value(paths, "delivery.tmux_passthrough").unwrap(),
+        "true"
+    );
+    assert!(set_config_value(paths, "delivery.tmux", "not-a-bool", false).is_err());
     assert!(get_config_value(paths, "unknown.key").is_err());
     assert!(set_config_value(paths, "unknown.key", "1", false).is_err());
 
