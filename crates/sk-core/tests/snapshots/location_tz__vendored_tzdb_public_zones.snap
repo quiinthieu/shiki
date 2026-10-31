@@ -1,0 +1,12 @@
+---
+source: crates/sk-core/tests/location_tz.rs
+expression: baseline
+---
+tzdb_version=2026f zones=312 aliases=252
+Asia/Saigon -> canonical=Asia/Ho_Chi_Minh alias=true countries=VN exact=(10.750000,106.666667) display=10.8,106.7
+Asia/Ho_Chi_Minh -> canonical=Asia/Ho_Chi_Minh alias=false countries=VN exact=(10.750000,106.666667) display=10.8,106.7
+Europe/London -> canonical=Europe/London alias=false countries=GB,GG,IM,JE exact=(51.508333,-0.125278) display=51.5,-0.1
+Europe/Kiev -> canonical=Europe/Kyiv alias=true countries=UA exact=(50.433333,30.516667) display=50.4,30.5
+America/New_York -> canonical=America/New_York alias=false countries=US exact=(40.714167,-74.006389) display=40.7,-74.0
+Antarctica/Troll -> canonical=Antarctica/Troll alias=false countries=AQ exact=(-72.011389,2.535000) display=-72.0,2.5
+Pacific/Auckland -> canonical=Pacific/Auckland alias=false countries=NZ,AQ exact=(-36.866667,174.766667) display=-36.9,174.8
