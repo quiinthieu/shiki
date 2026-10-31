@@ -445,7 +445,11 @@ fn exercise_real_shell_on_pty(
     );
 
     // 2. Second prompt (unchanged, fast path): zero OSC bytes emitted, and zero subprocess spawns in zsh/bash!
-    pty.write_input(b"true\n").unwrap();
+    //    Use a `printf '<%s>\n' STEPN` barrier before reading the next prompt so shells whose line
+    //    editor repaints the active prompt while echoing input (such as `fish`) cannot match stale prompts.
+    pty.write_input(b"printf '<%s>\\n' STEP2\n").unwrap();
+    pty.read_until(b"<STEP2>", PTY_TIMEOUT)
+        .unwrap_or_else(|e| panic!("{shell_name} STEP2 command barrier timed out: {e}"));
     let p2 = pty
         .read_until(b"<<SHIKI_PROMPT:0>> ", PTY_TIMEOUT)
         .unwrap_or_else(|e| panic!("{shell_name} prompt 2 timed out: {e}"));
@@ -466,7 +470,9 @@ fn exercise_real_shell_on_pty(
     //    and STILL emits zero OSC bytes!
     let spawns_before_p3 = count_spawns();
     expire_generation_freshness(env.paths()).unwrap();
-    pty.write_input(b"true\n").unwrap();
+    pty.write_input(b"printf '<%s>\\n' STEP3\n").unwrap();
+    pty.read_until(b"<STEP3>", PTY_TIMEOUT)
+        .unwrap_or_else(|e| panic!("{shell_name} STEP3 command barrier timed out: {e}"));
     let p3 = pty
         .read_until(b"<<SHIKI_PROMPT:0>> ", PTY_TIMEOUT)
         .unwrap_or_else(|e| panic!("{shell_name} prompt 3 timed out: {e}"));
@@ -492,13 +498,16 @@ fn exercise_real_shell_on_pty(
     assert_ne!(expected_osc_2, expected_osc_1);
     assert_eq!(load_state(env.paths()).unwrap().generation, 2);
 
-    pty.write_input(b"true\n").unwrap();
+    pty.write_input(b"printf '<%s>\\n' STEP4\n").unwrap();
+    pty.read_until(b"<STEP4>", PTY_TIMEOUT)
+        .unwrap_or_else(|e| panic!("{shell_name} STEP4 command barrier timed out: {e}"));
     let p4 = pty
         .read_until(b"<<SHIKI_PROMPT:0>> ", PTY_TIMEOUT)
         .unwrap_or_else(|e| panic!("{shell_name} prompt 4 timed out: {e}"));
     assert!(
         contains_palette_mutating_osc(&p4),
-        "{shell_name} must emit new OSC sequences when generation advances"
+        "{shell_name} must emit new OSC sequences when generation advances (captured p4={:?})",
+        String::from_utf8_lossy(&p4)
     );
     assert!(
         contains_subslice(&p4, &expected_osc_2),
@@ -506,7 +515,10 @@ fn exercise_real_shell_on_pty(
     );
 
     // 5. Fifth prompt (caught up to generation 2) + exit status `$?`/`$status` preservation (`42`)!
-    pty.write_input(b"sh -c 'exit 42'\n").unwrap();
+    pty.write_input(b"sh -c 'printf \"<%s>\\\\n\" STEP5; exit 42'\n")
+        .unwrap();
+    pty.read_until(b"<STEP5>", PTY_TIMEOUT)
+        .unwrap_or_else(|e| panic!("{shell_name} STEP5 command barrier timed out: {e}"));
     let p5 = pty
         .read_until(b"<<SHIKI_PROMPT:42>> ", PTY_TIMEOUT)
         .unwrap_or_else(|e| {
@@ -534,7 +546,9 @@ fn exercise_real_shell_on_pty(
         .expect("tab2 prompt 1");
     assert!(contains_subslice(&tab2_p1, &expected_osc_2));
 
-    pty2.write_input(b"true\n").unwrap();
+    pty2.write_input(b"printf '<%s>\\n' TAB2_STEP2\n").unwrap();
+    pty2.read_until(b"<TAB2_STEP2>", PTY_TIMEOUT)
+        .expect("tab2 STEP2 command barrier");
     let tab2_p2 = pty2
         .read_until(b"<<SHIKI_PROMPT:0>> ", PTY_TIMEOUT)
         .expect("tab2 prompt 2");
