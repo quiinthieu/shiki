@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-31
+
 ### Added
 - **T01 Workspace & tooling:** Cargo workspace with `sk-core`, `sk-store`, `sk-deliver`, `sk-import`, and `shiki-term` crate stubs.
 - Single-source-of-truth product metadata in `crates/sk-core/src/product.rs`, wired into `shiki-term --version`.
@@ -38,3 +40,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Perceptual OKLab `ΔE_OK` quantizer (`xterm256_color`, `rgb_to_xterm256`) in `crates/sk-core/src/color.rs` and horizon/twilight `next_solar_event` lookup in `crates/sk-core/src/solar.rs`.
 - Advisory file lock (`shiki.lock`), versioned coordinate-free `snapshot.json` (`Snapshot`), generation-tracked `state.json` (`StoreState`), `current.seq` persistence (`crates/sk-store/src/store.rs`), `jiff`-backed `--date`/`--time` query resolution (`crates/sk-store/src/moment.rs`), and validated `config get|set` (`crates/sk-store/src/config.rs`).
 - `shiki-term now`, `apply`, `reset`, `config get|set`, and inline SGR-only `preview` (swatches + sample text, 256-colour fallback, `NO_COLOR`, `--json`) verified by golden OSC/JSON/output snapshots and PTY tests (`crates/sk-deliver/tests/osc_encoder.rs`, `crates/sk-store/tests/store_and_config.rs`, `crates/shiki-term/tests/osc_cli_core.rs`).
+- **T08 Shell hook (`v0.1.0` MVP release):** Plain-text generation and freshness lease file `current.gen` (`GenerationRecord`, `load_generation_record`, `expire_generation_freshness`), lock-free `is_hook_store_fresh` short-circuit, `step_threshold`-gated `refresh_hook_store`, and POSIX `rustix::fs::fsync` atomic persistence in `crates/sk-store/src/{store,atomic,paths,config}.rs`.
+- `shiki-term hook zsh|bash|fish` prompt-hook generator (`$EPOCHSECONDS` zero-fork fast path for `zsh` and `bash` 5+, `$SECONDS` zero-fork lease fallback for `bash` 3.2, and `fish_prompt` event handler), hidden `shiki-term _emit [--if-stale] [--time <TIME>]` store refresher, and surgical `shiki-term hook install --write-rc` / `uninstall` marked-block rc editor with `<rc>.shiki-term.bak` backups and byte-for-byte restoration (`crates/shiki-term/src/{hook,main}.rs`).
+- Golden hook snapshots, 48-case `proptest` byte-exact rc round-trip tests, live interactive PTY tests across real `zsh`, `bash`, and `fish` shells (`crates/shiki-term/tests/shell_hook.rs`, `crates/sk-store/tests/hook_store.rs`), and measured `--release` prompt-hook / `_emit --if-stale` / `palette check` latencies in `docs/perf.md`.
