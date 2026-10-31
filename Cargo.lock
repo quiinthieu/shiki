@@ -794,8 +794,10 @@ name = "sk-deliver"
 version = "0.1.0"
 dependencies = [
  "insta",
+ "proptest",
  "rustix",
  "sk-core",
+ "tempfile",
  "thiserror",
 ]
 

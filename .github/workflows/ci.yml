@@ -29,9 +29,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install shells for PTY hook tests (Linux)
+      - name: Install shells and tmux for PTY integration tests (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends zsh fish
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends zsh fish tmux
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master

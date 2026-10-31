@@ -1,0 +1,8 @@
+---
+source: crates/sk-deliver/tests/tty_and_tmux.rs
+expression: frame_snapshot
+---
+combined_frame_byte_len = 813
+raw_frame_byte_len = 383
+dcs_frame_byte_len = 430
+sample_bg_dcs = \x1bPtmux;\x1b\x1b]11;rgb:27/25/2b\x1b\x1b\\\x1b\\

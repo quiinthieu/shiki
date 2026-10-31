@@ -1,0 +1,9 @@
+---
+source: crates/sk-deliver/tests/tty_and_tmux.rs
+expression: reset_snapshot
+---
+total_byte_len = 73
+raw_byte_len = 28
+dcs_byte_len = 45
+raw = \x1b]104\x1b\\\x1b]110\x1b\\\x1b]111\x1b\\\x1b]112\x1b\\
+dcs = \x1bPtmux;\x1b\x1b]104\x1b\x1b\\\x1b\x1b]110\x1b\x1b\\\x1b\x1b]111\x1b\x1b\\\x1b\x1b]112\x1b\x1b\\\x1b\\
