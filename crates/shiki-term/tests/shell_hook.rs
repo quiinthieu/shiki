@@ -419,7 +419,7 @@ fn exercise_real_shell_on_pty(
 
     let mut pty = PtyPair::open_cooked().expect("open cooked PTY");
     let mut child = pty
-        .spawn_command(make_shell())
+        .spawn_session_command(make_shell())
         .unwrap_or_else(|e| panic!("spawn {shell_name} on PTY: {e}"));
 
     // 1. First prompt: cold start runs `_emit --if-stale`, populates `current.seq` & `current.gen`,
@@ -518,6 +518,7 @@ fn exercise_real_shell_on_pty(
     );
 
     pty.write_input(b"exit\n").unwrap();
+    let _ = pty.read_to_eof(PTY_TIMEOUT);
     let status = child
         .wait_with_timeout(PTY_TIMEOUT)
         .expect("reap first shell child");
@@ -526,7 +527,7 @@ fn exercise_real_shell_on_pty(
     // 6. Brand-new shell session (second terminal tab): catches up on its first prompt, silent on second!
     let mut pty2 = PtyPair::open_cooked().expect("open second cooked PTY");
     let mut child2 = pty2
-        .spawn_command(make_shell())
+        .spawn_session_command(make_shell())
         .expect("spawn second shell");
     let tab2_p1 = pty2
         .read_until(b"<<SHIKI_PROMPT:0>> ", PTY_TIMEOUT)
@@ -540,6 +541,7 @@ fn exercise_real_shell_on_pty(
     assert!(!contains_palette_mutating_osc(&tab2_p2));
 
     pty2.write_input(b"exit\n").unwrap();
+    let _ = pty2.read_to_eof(PTY_TIMEOUT);
     let _ = child2.wait_with_timeout(PTY_TIMEOUT).unwrap();
 }
 
@@ -615,7 +617,8 @@ fn real_fish_on_pty_emits_on_first_prompt_and_afterwards_only_on_change_when_ins
             cmd.env_clear();
             cmd.envs(env.env_vars());
             cmd.env("PATH", &path_env);
-            cmd.env("TERM", "vt100");
+            cmd.env("TERM", "dumb");
+            cmd.env("LC_ALL", "C");
             cmd
         },
         |env| {
@@ -624,7 +627,7 @@ fn real_fish_on_pty_emits_on_first_prompt_and_afterwards_only_on_change_when_ins
             let rc = fish_dir.join("config.fish");
             fs::write(
                 &rc,
-                "function fish_greeting; end\nfunction fish_prompt; set -l s $status; printf '<<SHIKI_PROMPT:%d>> ' $s; end\n",
+                "function fish_greeting; end\nfunction fish_title; end\nfunction fish_right_prompt; end\nfunction fish_prompt; set -l s $status; printf '<<SHIKI_PROMPT:%d>> ' $s; end\n",
             )
             .unwrap();
             rc

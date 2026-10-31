@@ -102,3 +102,26 @@ fn pty_pair_passes_100x_in_a_loop_without_fd_leaks() {
         assert!(eof.is_empty());
     }
 }
+
+#[test]
+fn pty_pair_spawn_session_command_attaches_controlling_terminal() {
+    let mut pair = PtyPair::open_raw().expect("open raw PTY pair");
+    let mut cmd = Command::new("/bin/sh");
+    cmd.args(["-c", "printf 'ctty-attached' >/dev/tty"]);
+
+    let mut child = pair
+        .spawn_session_command(cmd)
+        .expect("spawn session leader with controlling terminal");
+    let output = pair
+        .read_to_eof(TIMEOUT)
+        .expect("read /dev/tty output from PTY controller");
+    let status = child
+        .wait_with_timeout(TIMEOUT)
+        .expect("wait for session child");
+
+    assert!(status.success(), "session child exited with {status}");
+    assert_eq!(
+        String::from_utf8(output).expect("UTF-8 /dev/tty output"),
+        "ctty-attached"
+    );
+}

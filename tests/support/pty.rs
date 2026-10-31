@@ -178,7 +178,11 @@ impl PtyPair {
         if !out.windows(needle.len()).any(|window| window == needle) {
             return Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
-                "PTY reached EOF before needle appeared",
+                format!(
+                    "PTY reached EOF before needle appeared (captured {} bytes: {:?})",
+                    out.len(),
+                    String::from_utf8_lossy(&out)
+                ),
             ));
         }
         Ok(out)
@@ -283,6 +287,59 @@ impl PtyPair {
 
         let child = cmd.spawn()?;
         Ok(PtyChild { child: Some(child) })
+    }
+
+    /// Spawns `cmd` as the leader of a new POSIX session (`setsid`) with the PTY replica attached
+    /// as its controlling terminal (`TIOCSCTTY`), required by interactive shells like `fish` whose
+    /// job-control startup checks `tcgetpgrp(STDIN_FILENO)`.
+    ///
+    /// Uses `setsid -w -c` on Linux (`util-linux`) or `python3` (`os.setsid` + `TIOCSCTTY` +
+    /// `os.execv`) on macOS so workspace crates stay 100% free of `unsafe` (`pre_exec`).
+    pub fn spawn_session_command(&mut self, cmd: Command) -> io::Result<PtyChild> {
+        let setsid_candidate = ["/usr/bin/setsid", "/bin/setsid"]
+            .into_iter()
+            .map(PathBuf::from)
+            .find(|p| p.is_file());
+
+        let mut wrapped = if let Some(setsid_bin) = setsid_candidate {
+            let mut c = Command::new(setsid_bin);
+            c.args(["-w", "-c"]).arg(cmd.get_program());
+            c.args(cmd.get_args());
+            c
+        } else {
+            let py_bin = ["/usr/bin/python3", "/opt/homebrew/bin/python3"]
+                .into_iter()
+                .map(PathBuf::from)
+                .find(|p| p.is_file())
+                .unwrap_or_else(|| PathBuf::from("python3"));
+            let mut c = Command::new(py_bin);
+            c.args([
+                "-c",
+                "import fcntl, os, sys, termios; os.setsid(); fcntl.ioctl(0, termios.TIOCSCTTY, 0); os.execv(sys.argv[1], sys.argv[1:])",
+            ])
+            .arg(cmd.get_program());
+            c.args(cmd.get_args());
+            c
+        };
+
+        if cmd.get_envs().next().is_some() {
+            wrapped.env_clear();
+        }
+        for (key, val) in cmd.get_envs() {
+            match val {
+                Some(v) => {
+                    wrapped.env(key, v);
+                }
+                None => {
+                    wrapped.env_remove(key);
+                }
+            }
+        }
+        if let Some(dir) = cmd.get_current_dir() {
+            wrapped.current_dir(dir);
+        }
+
+        self.spawn_command(wrapped)
     }
 }
 
