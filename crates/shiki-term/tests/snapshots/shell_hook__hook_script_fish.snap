@@ -45,7 +45,9 @@ function __shiki_fish_prompt --on-event fish_prompt
     if test -r "$_shiki_gen_file"
         set -l _shiki_gen ""
         set -l _shiki_until ""
-        read -l _shiki_gen _shiki_until < "$_shiki_gen_file" 2>/dev/null
+        set -l _shiki_ttl ""
+        set -l _shiki_rest ""
+        read -l _shiki_gen _shiki_until _shiki_ttl _shiki_rest < "$_shiki_gen_file" 2>/dev/null
         if test -n "$_shiki_gen"; and test "$_shiki_gen" != "$__SHIKI_GEN"
             set -g __SHIKI_GEN "$_shiki_gen"
             if test -s "$_shiki_seq_file"

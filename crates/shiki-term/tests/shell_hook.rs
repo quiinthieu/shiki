@@ -390,9 +390,36 @@ fn exercise_real_shell_on_pty(
         .success();
     assert!(rc_path.exists());
 
+    // Wrap `SHIKI_TERM_BIN` so we can count exact `_emit --if-stale` subprocess spawns across prompts.
+    let emit_count_file = env.home_dir().join("emit_spawns.log");
+    let wrapper_path = env.home_dir().join("shiki-wrapper.sh");
+    fs::write(
+        &wrapper_path,
+        format!(
+            "#!/bin/sh\nprintf '1\\n' >> \"{}\"\nexec \"{}\" \"$@\"\n",
+            emit_count_file.display(),
+            shiki_bin_path().display()
+        ),
+    )
+    .unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&wrapper_path, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let count_spawns = || -> usize {
+        fs::read_to_string(&emit_count_file)
+            .map(|s| s.lines().count())
+            .unwrap_or(0)
+    };
+    let make_shell = || {
+        let mut cmd = build_shell_cmd(&env, &rc_path);
+        cmd.env("SHIKI_TERM_BIN", &wrapper_path);
+        cmd
+    };
+
     let mut pty = PtyPair::open_cooked().expect("open cooked PTY");
     let mut child = pty
-        .spawn_command(build_shell_cmd(&env, &rc_path))
+        .spawn_command(make_shell())
         .unwrap_or_else(|e| panic!("spawn {shell_name} on PTY: {e}"));
 
     // 1. First prompt: cold start runs `_emit --if-stale`, populates `current.seq` & `current.gen`,
@@ -411,8 +438,13 @@ fn exercise_real_shell_on_pty(
         "{shell_name} first prompt must contain exact current.seq bytes"
     );
     assert_eq!(load_state(env.paths()).unwrap().generation, 1);
+    assert_eq!(
+        count_spawns(),
+        1,
+        "{shell_name} cold start must spawn _emit once"
+    );
 
-    // 2. Second prompt (unchanged, fast path): zero OSC bytes emitted!
+    // 2. Second prompt (unchanged, fast path): zero OSC bytes emitted, and zero subprocess spawns in zsh/bash!
     pty.write_input(b"true\n").unwrap();
     let p2 = pty
         .read_until(b"<<SHIKI_PROMPT:0>> ", PTY_TIMEOUT)
@@ -421,10 +453,18 @@ fn exercise_real_shell_on_pty(
         !contains_palette_mutating_osc(&p2),
         "{shell_name} must emit zero OSC sequences on unchanged prompt 2"
     );
+    if matches!(shell_name, "zsh" | "bash") {
+        assert_eq!(
+            count_spawns(),
+            1,
+            "{shell_name} fast path must not fork `_emit --if-stale` within hook_min_interval_secs"
+        );
+    }
 
     // 3. Third prompt: expire freshness lease so `_emit --if-stale` actually executes,
     //    recomputes at the same wall-clock moment (`ΔE_OK < step_threshold`), keeps generation 1,
     //    and STILL emits zero OSC bytes!
+    let spawns_before_p3 = count_spawns();
     expire_generation_freshness(env.paths()).unwrap();
     pty.write_input(b"true\n").unwrap();
     let p3 = pty
@@ -435,6 +475,11 @@ fn exercise_real_shell_on_pty(
         "{shell_name} must emit zero OSC sequences when stale check sees no colour change"
     );
     assert_eq!(load_state(env.paths()).unwrap().generation, 1);
+    assert_eq!(
+        count_spawns(),
+        spawns_before_p3 + 1,
+        "{shell_name} must re-invoke `_emit --if-stale` when current.gen freshness expires"
+    );
 
     // 4. Fourth prompt: shift store to an opposite solar phase (`apply --time ...`), bumping
     //    `current.gen` to 2. The next prompt in the live shell emits the exact new OSC bytes!
@@ -481,7 +526,7 @@ fn exercise_real_shell_on_pty(
     // 6. Brand-new shell session (second terminal tab): catches up on its first prompt, silent on second!
     let mut pty2 = PtyPair::open_cooked().expect("open second cooked PTY");
     let mut child2 = pty2
-        .spawn_command(build_shell_cmd(&env, &rc_path))
+        .spawn_command(make_shell())
         .expect("spawn second shell");
     let tab2_p1 = pty2
         .read_until(b"<<SHIKI_PROMPT:0>> ", PTY_TIMEOUT)

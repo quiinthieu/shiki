@@ -87,9 +87,10 @@ impl fmt::Display for HookShell {
 
 /// Renders the prompt-hook script evaluated by `eval "$(<bin> hook <shell>)"` or `<bin> hook fish | source`.
 ///
-/// Fast path (`PLAN.md` §7): reads `current.gen` (`<generation> <fresh_until_unix_secs>`) using pure
-/// shell builtins (`$EPOCHSECONDS` in `zsh` / `bash` 5+) so unchanged prompts within
-/// `hook_min_interval_secs` perform zero subprocess spawns and zero colour math.
+/// Fast path (`PLAN.md` §7): reads `current.gen` (`<generation> <fresh_until_unix_secs> <interval_secs>`)
+/// using pure shell builtins (`$EPOCHSECONDS` in `zsh` / `bash` 5+, `$SECONDS` lease fallback in
+/// `bash` 3.2) so unchanged prompts within `hook_min_interval_secs` perform zero subprocess spawns
+/// and zero colour math.
 #[must_use]
 pub fn render_hook_script(shell: HookShell) -> String {
     let bin = product::CLI_BIN;
@@ -97,7 +98,7 @@ pub fn render_hook_script(shell: HookShell) -> String {
     match shell {
         HookShell::Zsh => format!(
             r##"# {display} prompt hook for zsh (`eval "$({bin} hook zsh)"`)
-zmodload -F zsh/datetime b:EPOCHSECONDS 2>/dev/null || true
+zmodload -F zsh/datetime p:EPOCHSECONDS 2>/dev/null || zmodload zsh/datetime 2>/dev/null || true
 typeset -g __SHIKI_GEN="${{__SHIKI_GEN:-}}"
 
 __shiki_precmd() {{
@@ -124,10 +125,10 @@ __shiki_precmd() {{
 
     local _shiki_gen_file="$_shiki_rt/current.gen"
     local _shiki_seq_file="$_shiki_rt/current.seq"
-    local _shiki_gen="" _shiki_until=0 _shiki_fresh=0
+    local _shiki_gen="" _shiki_until=0 _shiki_ttl=0 _shiki_rest="" _shiki_fresh=0
 
     if [[ -r "$_shiki_gen_file" && -e "$_shiki_seq_file" && ! "$_shiki_cfg" -nt "$_shiki_gen_file" ]]; then
-        IFS=' ' read -r _shiki_gen _shiki_until < "$_shiki_gen_file" 2>/dev/null || true
+        IFS=' ' read -r _shiki_gen _shiki_until _shiki_ttl _shiki_rest < "$_shiki_gen_file" 2>/dev/null || true
         if [[ -n "${{EPOCHSECONDS:-}}" && "$_shiki_until" == <-> ]] && (( EPOCHSECONDS < _shiki_until )); then
             _shiki_fresh=1
         fi
@@ -136,7 +137,7 @@ __shiki_precmd() {{
     if (( ! _shiki_fresh )); then
         command "${{SHIKI_TERM_BIN:-{bin}}}" _emit --if-stale >/dev/null 2>&1 || true
         if [[ -r "$_shiki_gen_file" ]]; then
-            IFS=' ' read -r _shiki_gen _shiki_until < "$_shiki_gen_file" 2>/dev/null || true
+            IFS=' ' read -r _shiki_gen _shiki_until _shiki_ttl _shiki_rest < "$_shiki_gen_file" 2>/dev/null || true
         fi
     fi
 
@@ -159,6 +160,9 @@ fi
         HookShell::Bash => format!(
             r##"# {display} prompt hook for bash (`eval "$({bin} hook bash)"`)
 __SHIKI_GEN="${{__SHIKI_GEN:-}}"
+__SHIKI_LEASE_UNTIL="${{__SHIKI_LEASE_UNTIL:-}}"
+__SHIKI_LEASE_START="${{__SHIKI_LEASE_START:-0}}"
+__SHIKI_LEASE_END="${{__SHIKI_LEASE_END:-0}}"
 
 __shiki_prompt_command() {{
     local _shiki_status=$?
@@ -189,14 +193,18 @@ __shiki_prompt_command() {{
 
     local _shiki_gen_file="$_shiki_rt/current.gen"
     local _shiki_seq_file="$_shiki_rt/current.seq"
-    local _shiki_gen="" _shiki_until=0 _shiki_fresh=0
+    local _shiki_gen="" _shiki_until=0 _shiki_ttl=0 _shiki_rest="" _shiki_fresh=0
 
     if [ -r "$_shiki_gen_file" ] && [ -e "$_shiki_seq_file" ] && [ ! "$_shiki_cfg" -nt "$_shiki_gen_file" ]; then
-        IFS=' ' read -r _shiki_gen _shiki_until < "$_shiki_gen_file" 2>/dev/null || true
+        IFS=' ' read -r _shiki_gen _shiki_until _shiki_ttl _shiki_rest < "$_shiki_gen_file" 2>/dev/null || true
         case "${{_shiki_until:-}}" in
             ''|*[!0-9]*) ;;
             *)
-                if [ -n "${{EPOCHSECONDS:-}}" ] && [ "$EPOCHSECONDS" -lt "$_shiki_until" ]; then
+                if [ -n "${{EPOCHSECONDS:-}}" ]; then
+                    if [ "$EPOCHSECONDS" -lt "$_shiki_until" ]; then
+                        _shiki_fresh=1
+                    fi
+                elif [ "$_shiki_until" -gt 0 ] && [ "${{__SHIKI_LEASE_UNTIL:-}}" = "$_shiki_until" ] && [ "${{SECONDS:-0}}" -ge "${{__SHIKI_LEASE_START:-0}}" ] && [ "${{SECONDS:-0}}" -lt "${{__SHIKI_LEASE_END:-0}}" ]; then
                     _shiki_fresh=1
                 fi
                 ;;
@@ -206,11 +214,26 @@ __shiki_prompt_command() {{
     if [ "$_shiki_fresh" -eq 0 ]; then
         command "${{SHIKI_TERM_BIN:-{bin}}}" _emit --if-stale >/dev/null 2>&1 || true
         if [ -r "$_shiki_gen_file" ]; then
-            IFS=' ' read -r _shiki_gen _shiki_until < "$_shiki_gen_file" 2>/dev/null || true
+            IFS=' ' read -r _shiki_gen _shiki_until _shiki_ttl _shiki_rest < "$_shiki_gen_file" 2>/dev/null || true
+            case "${{_shiki_until:-}}" in
+                ''|0|*[!0-9]*)
+                    __SHIKI_LEASE_UNTIL=""
+                    __SHIKI_LEASE_START=0
+                    __SHIKI_LEASE_END=0
+                    ;;
+                *)
+                    case "${{_shiki_ttl:-}}" in
+                        ''|*[!0-9]*) _shiki_ttl=60 ;;
+                    esac
+                    __SHIKI_LEASE_UNTIL="$_shiki_until"
+                    __SHIKI_LEASE_START="${{SECONDS:-0}}"
+                    __SHIKI_LEASE_END=$(( ${{SECONDS:-0}} + _shiki_ttl ))
+                    ;;
+            esac
         fi
     fi
 
-    if [ -n "$_shiki_gen" ] && [ "$_shiki_gen" != "$__SHIKI_GEN" ]; then
+    if [ -n "$_shiki_gen" ] && [ "$_shiki_gen" != "${{__SHIKI_GEN:-}}" ]; then
         __SHIKI_GEN="$_shiki_gen"
         if [ -s "$_shiki_seq_file" ]; then
             command cat "$_shiki_seq_file" 2>/dev/null || true
@@ -278,7 +301,9 @@ function __shiki_fish_prompt --on-event fish_prompt
     if test -r "$_shiki_gen_file"
         set -l _shiki_gen ""
         set -l _shiki_until ""
-        read -l _shiki_gen _shiki_until < "$_shiki_gen_file" 2>/dev/null
+        set -l _shiki_ttl ""
+        set -l _shiki_rest ""
+        read -l _shiki_gen _shiki_until _shiki_ttl _shiki_rest < "$_shiki_gen_file" 2>/dev/null
         if test -n "$_shiki_gen"; and test "$_shiki_gen" != "$__SHIKI_GEN"
             set -g __SHIKI_GEN "$_shiki_gen"
             if test -s "$_shiki_seq_file"

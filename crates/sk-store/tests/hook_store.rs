@@ -24,23 +24,33 @@ fn sample_osc_bytes(colors: &PaletteColors) -> Vec<u8> {
 }
 
 #[test]
-fn generation_record_round_trips_and_tolerates_legacy_single_field() {
+fn generation_record_round_trips_and_tolerates_legacy_single_and_two_field_records() {
     let rec = GenerationRecord {
         generation: 7,
         fresh_until_unix_secs: 1_774_038_960,
+        interval_secs: 60,
     };
     let encoded = String::from_utf8(rec.encode()).unwrap();
-    assert_eq!(encoded, "7 1774038960\n");
+    assert_eq!(encoded, "7 1774038960 60\n");
     assert_eq!(GenerationRecord::parse(&encoded), Some(rec));
+    assert_eq!(
+        GenerationRecord::parse("7 1774038960\n"),
+        Some(GenerationRecord {
+            generation: 7,
+            fresh_until_unix_secs: 1_774_038_960,
+            interval_secs: 0,
+        })
+    );
     assert_eq!(
         GenerationRecord::parse("42\n"),
         Some(GenerationRecord {
             generation: 42,
             fresh_until_unix_secs: 0,
+            interval_secs: 0,
         })
     );
     assert_eq!(GenerationRecord::parse(""), None);
-    assert_eq!(GenerationRecord::parse("not-a-number 10"), None);
+    assert_eq!(GenerationRecord::parse("not-a-number 10 60"), None);
 }
 
 #[test]
@@ -67,6 +77,7 @@ fn persist_applied_frame_and_reset_keep_current_gen_in_sync_with_state_json() {
     let gen1 = load_generation_record(paths).unwrap().expect("current.gen");
     assert_eq!(gen1.generation, 1);
     assert_eq!(gen1.fresh_until_unix_secs, t0.as_unix_secs() + 60);
+    assert_eq!(gen1.interval_secs, 60);
     assert!(is_hook_store_fresh(paths, t0.as_unix_secs() + 59).unwrap());
     assert!(!is_hook_store_fresh(paths, t0.as_unix_secs() + 60).unwrap());
 
@@ -161,10 +172,18 @@ fn refresh_hook_store_respects_staleness_window_step_threshold_and_config_change
     let expired_gen = load_generation_record(paths).unwrap().unwrap();
     assert_eq!(expired_gen.generation, 2);
     assert_eq!(expired_gen.fresh_until_unix_secs, 0);
+    assert_eq!(expired_gen.interval_secs, 0);
     assert!(!is_hook_store_fresh(paths, t_dawn.add_secs(1).as_unix_secs()).unwrap());
 
     // 6. `expire_generation_freshness` forces re-check on next prompt without losing generation.
     let _ = refresh_hook_store(paths, true, None, t_dawn.add_secs(1), sample_osc_bytes).unwrap();
+    assert_eq!(
+        load_generation_record(paths)
+            .unwrap()
+            .unwrap()
+            .interval_secs,
+        120
+    );
     assert!(is_hook_store_fresh(paths, t_dawn.add_secs(90).as_unix_secs()).unwrap());
     expire_generation_freshness(paths).unwrap();
     assert!(!is_hook_store_fresh(paths, t_dawn.add_secs(90).as_unix_secs()).unwrap());

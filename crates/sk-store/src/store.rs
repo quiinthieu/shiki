@@ -116,12 +116,14 @@ pub fn compute_config_file_hash(paths: &ShikiPaths) -> Result<String, StoreError
 
 /// Compact plain-text generation token and freshness lease persisted in `current.gen` (`PLAN.md` §10 T08).
 ///
-/// Format: `"<generation> <fresh_until_unix_secs>\n"`, enabling pure-shell `read` fast paths with
-/// zero subprocesses or JSON parsing on unchanged prompts.
+/// Format: `"<generation> <fresh_until_unix_secs> <interval_secs>\n"`, enabling pure-shell `read`
+/// fast paths (using `$EPOCHSECONDS` in `zsh` / `bash` 5+ and `$SECONDS` in `bash` 3.2) with zero
+/// subprocesses or JSON parsing on unchanged prompts.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct GenerationRecord {
     pub generation: u64,
     pub fresh_until_unix_secs: i64,
+    pub interval_secs: i64,
 }
 
 impl GenerationRecord {
@@ -133,15 +135,24 @@ impl GenerationRecord {
             Some(tok) => tok.parse::<i64>().ok()?,
             None => 0,
         };
+        let interval_secs = match parts.next() {
+            Some(tok) => tok.parse::<i64>().ok()?,
+            None => 0,
+        };
         Some(Self {
             generation,
             fresh_until_unix_secs,
+            interval_secs,
         })
     }
 
     #[must_use]
     pub fn encode(self) -> Vec<u8> {
-        format!("{} {}\n", self.generation, self.fresh_until_unix_secs).into_bytes()
+        format!(
+            "{} {} {}\n",
+            self.generation, self.fresh_until_unix_secs, self.interval_secs
+        )
+        .into_bytes()
     }
 }
 
@@ -154,12 +165,13 @@ pub fn load_generation_record(paths: &ShikiPaths) -> Result<Option<GenerationRec
     }
 }
 
-/// Sets `fresh_until_unix_secs = 0` in `current.gen` (if present) without altering `generation`,
-/// forcing the next shell prompt to invoke `_emit --if-stale`.
+/// Sets `fresh_until_unix_secs = 0` and `interval_secs = 0` in `current.gen` (if present) without
+/// altering `generation`, forcing the next shell prompt to invoke `_emit --if-stale`.
 pub fn expire_generation_freshness(paths: &ShikiPaths) -> Result<(), StoreError> {
     if let Some(mut rec) = load_generation_record(paths)? {
-        if rec.fresh_until_unix_secs != 0 {
+        if rec.fresh_until_unix_secs != 0 || rec.interval_secs != 0 {
             rec.fresh_until_unix_secs = 0;
+            rec.interval_secs = 0;
             atomic_write(&paths.current_gen_file(), &rec.encode())?;
         }
     }
@@ -388,6 +400,7 @@ fn write_applied_frame_locked(
     let gen_rec = GenerationRecord {
         generation: state.generation,
         fresh_until_unix_secs: fresh_until,
+        interval_secs: lease.interval_secs,
     };
 
     let snapshot_bytes = serialize_json_pretty(snapshot)?;
@@ -480,6 +493,7 @@ pub fn persist_reset(
     let gen_rec = GenerationRecord {
         generation: state.generation,
         fresh_until_unix_secs: reset_unix.saturating_add(interval_secs),
+        interval_secs,
     };
 
     let state_bytes = serialize_json_pretty(&state)?;
@@ -631,6 +645,7 @@ where
         let gen_rec = GenerationRecord {
             generation: state.generation,
             fresh_until_unix_secs: now_unix.saturating_add(interval_secs),
+            interval_secs,
         };
         let state_bytes = serialize_json_pretty(&state)?;
         atomic_write(&paths.state_file(), &state_bytes)?;
