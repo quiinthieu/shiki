@@ -20,4 +20,17 @@ pub enum StoreError {
 
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error(transparent)]
+    Location(#[from] sk_core::location::LocationError),
+
+    #[error("failed to parse configuration at {path}{location}: {message}")]
+    ConfigParse {
+        path: PathBuf,
+        location: String,
+        message: String,
+    },
+
+    #[error("failed to serialize configuration: {0}")]
+    ConfigSerialize(String),
 }

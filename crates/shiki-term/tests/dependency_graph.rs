@@ -286,9 +286,11 @@ fn sk_core_has_no_impure_dependencies() {
         "crossterm",
         "directories",
         "fs4",
+        "jiff",
         "plist",
         "rustix",
         "tempfile",
+        "time",
     ]
     .into_iter()
     .collect();
