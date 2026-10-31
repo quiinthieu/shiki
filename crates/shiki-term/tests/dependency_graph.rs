@@ -367,3 +367,45 @@ fn product_names_are_single_sourced_in_product_rs() {
         }
     }
 }
+
+#[test]
+fn toolchain_versions_stay_in_sync() {
+    let root = workspace_root();
+
+    let rust_toolchain =
+        fs::read_to_string(root.join("rust-toolchain.toml")).expect("read rust-toolchain.toml");
+    let channel = rust_toolchain
+        .lines()
+        .find_map(|line| {
+            line.trim()
+                .strip_prefix("channel")
+                .map(|rest| rest.trim().trim_start_matches('=').trim().trim_matches('"'))
+        })
+        .expect("channel in rust-toolchain.toml");
+
+    let root_cargo = fs::read_to_string(root.join("Cargo.toml")).expect("read root Cargo.toml");
+    assert!(
+        root_cargo.contains(&format!("rust-version = \"{channel}\"")),
+        "root Cargo.toml rust-version must match rust-toolchain.toml channel ({channel})"
+    );
+
+    let clippy_toml = fs::read_to_string(root.join("clippy.toml")).expect("read clippy.toml");
+    assert!(
+        clippy_toml.contains(&format!("msrv = \"{channel}\"")),
+        "clippy.toml msrv must match rust-toolchain.toml channel ({channel})"
+    );
+
+    let ci_yml = fs::read_to_string(root.join(".github/workflows/ci.yml")).expect("read ci.yml");
+    assert!(
+        ci_yml.contains(&format!("toolchain: \"{channel}\"")),
+        ".github/workflows/ci.yml must explicitly pin toolchain: \"{channel}\" to match rust-toolchain.toml"
+    );
+    assert!(
+        ci_yml.contains("tool: cargo-deny"),
+        ".github/workflows/ci.yml must pass tool: cargo-deny to taiki-e/install-action"
+    );
+    assert!(
+        ci_yml.contains("./scripts/lint-privacy.sh"),
+        ".github/workflows/ci.yml must run ./scripts/lint-privacy.sh"
+    );
+}
