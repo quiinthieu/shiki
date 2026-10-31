@@ -1,0 +1,101 @@
+---
+source: crates/shiki-term/tests/shell_hook.rs
+expression: script
+---
+# Shiki prompt hook for bash (`eval "$(shiki-term hook bash)"`)
+__SHIKI_GEN="${__SHIKI_GEN:-}"
+__SHIKI_LEASE_UNTIL="${__SHIKI_LEASE_UNTIL:-}"
+__SHIKI_LEASE_START="${__SHIKI_LEASE_START:-0}"
+__SHIKI_LEASE_END="${__SHIKI_LEASE_END:-0}"
+
+__shiki_prompt_command() {
+    local _shiki_status=$?
+    [ -t 1 ] || return $_shiki_status
+
+    local _shiki_rt="" _shiki_cfg=""
+    if [ -n "${SHIKI_HOME:-}" ]; then
+        _shiki_rt="$SHIKI_HOME"
+        _shiki_cfg="$SHIKI_HOME/config.toml"
+    else
+        case "${OSTYPE:-}" in
+            darwin*)
+                _shiki_rt="${HOME:-}/Library/Application Support/Shiki"
+                _shiki_cfg="$_shiki_rt/config.toml"
+                ;;
+            *)
+                local _shiki_cfg_dir="${XDG_CONFIG_HOME:-${HOME:-}/.config}/shiki-term"
+                local _shiki_state_dir="${XDG_STATE_HOME:-${HOME:-}/.local/state}/shiki-term"
+                if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+                    _shiki_rt="$XDG_RUNTIME_DIR/shiki-term"
+                else
+                    _shiki_rt="$_shiki_state_dir"
+                fi
+                _shiki_cfg="$_shiki_cfg_dir/config.toml"
+                ;;
+        esac
+    fi
+
+    local _shiki_gen_file="$_shiki_rt/current.gen"
+    local _shiki_seq_file="$_shiki_rt/current.seq"
+    local _shiki_gen="" _shiki_until=0 _shiki_ttl=0 _shiki_rest="" _shiki_fresh=0
+
+    if [ -r "$_shiki_gen_file" ] && [ -e "$_shiki_seq_file" ] && [ ! "$_shiki_cfg" -nt "$_shiki_gen_file" ]; then
+        IFS=' ' read -r _shiki_gen _shiki_until _shiki_ttl _shiki_rest < "$_shiki_gen_file" 2>/dev/null || true
+        case "${_shiki_until:-}" in
+            ''|*[!0-9]*) ;;
+            *)
+                if [ -n "${EPOCHSECONDS:-}" ]; then
+                    if [ "$EPOCHSECONDS" -lt "$_shiki_until" ]; then
+                        _shiki_fresh=1
+                    fi
+                elif [ "$_shiki_until" -gt 0 ] && [ "${__SHIKI_LEASE_UNTIL:-}" = "$_shiki_until" ] && [ "${SECONDS:-0}" -ge "${__SHIKI_LEASE_START:-0}" ] && [ "${SECONDS:-0}" -lt "${__SHIKI_LEASE_END:-0}" ]; then
+                    _shiki_fresh=1
+                fi
+                ;;
+        esac
+    fi
+
+    if [ "$_shiki_fresh" -eq 0 ]; then
+        command "${SHIKI_TERM_BIN:-shiki-term}" _emit --if-stale >/dev/null 2>&1 || true
+        if [ -r "$_shiki_gen_file" ]; then
+            IFS=' ' read -r _shiki_gen _shiki_until _shiki_ttl _shiki_rest < "$_shiki_gen_file" 2>/dev/null || true
+            case "${_shiki_until:-}" in
+                ''|0|*[!0-9]*)
+                    __SHIKI_LEASE_UNTIL=""
+                    __SHIKI_LEASE_START=0
+                    __SHIKI_LEASE_END=0
+                    ;;
+                *)
+                    case "${_shiki_ttl:-}" in
+                        ''|*[!0-9]*) _shiki_ttl=60 ;;
+                    esac
+                    __SHIKI_LEASE_UNTIL="$_shiki_until"
+                    __SHIKI_LEASE_START="${SECONDS:-0}"
+                    __SHIKI_LEASE_END=$(( ${SECONDS:-0} + _shiki_ttl ))
+                    ;;
+            esac
+        fi
+    fi
+
+    if [ -n "$_shiki_gen" ] && [ "$_shiki_gen" != "${__SHIKI_GEN:-}" ]; then
+        __SHIKI_GEN="$_shiki_gen"
+        if [ -s "$_shiki_seq_file" ]; then
+            command cat "$_shiki_seq_file" 2>/dev/null || true
+        fi
+    fi
+
+    return $_shiki_status
+}
+
+if [[ "$(declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]]; then
+    if [[ " ${PROMPT_COMMAND[*]-} " != *" __shiki_prompt_command "* ]]; then
+        PROMPT_COMMAND=(__shiki_prompt_command "${PROMPT_COMMAND[@]}")
+    fi
+else
+    case ";${PROMPT_COMMAND:-};" in
+        *";__shiki_prompt_command;"*) ;;
+        *)
+            PROMPT_COMMAND="__shiki_prompt_command${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
+            ;;
+    esac
+fi

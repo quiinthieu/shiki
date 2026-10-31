@@ -1,6 +1,10 @@
+mod hook;
 mod preview;
 
 use clap::{Args, Parser, Subcommand};
+use hook::{
+    install_hook_to_rc, preview_rc_block, render_hook_script, uninstall_hook_from_rc, HookShell,
+};
 use preview::{render_preview, ColorChoiceArg, PreviewColorMode};
 use sk_core::location::{ManualLocation, ResolvedLocation};
 use sk_core::palette::{
@@ -20,8 +24,9 @@ use sk_store::error::StoreError;
 use sk_store::moment::resolve_moment_query;
 use sk_store::palette::load_palette;
 use sk_store::paths::ShikiPaths;
-use sk_store::store::{persist_applied_frame, persist_reset, Snapshot};
+use sk_store::store::{persist_applied_frame_at, persist_reset, refresh_hook_store, Snapshot};
 use std::io;
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 #[derive(Parser, Debug)]
@@ -52,6 +57,11 @@ enum Commands {
     Locate(LocateArgs),
     /// Manage and verify terminal colour palettes
     Palette(PaletteArgs),
+    /// Emit or install the shell prompt hook (`zsh`, `bash`, `fish`)
+    Hook(HookArgs),
+    /// Internal prompt-hook helper that refreshes `current.seq` and `current.gen`
+    #[command(name = "_emit", hide = true)]
+    Emit(EmitArgs),
 }
 
 #[derive(Args, Debug)]
@@ -204,6 +214,100 @@ struct PaletteCheckArgs {
     i_know: bool,
 }
 
+#[derive(Args, Debug)]
+struct HookArgs {
+    #[command(subcommand)]
+    command: HookCommand,
+}
+
+#[derive(Subcommand, Debug)]
+enum HookCommand {
+    /// Print the zsh prompt hook script (or `install --write-rc` / `uninstall`)
+    Zsh(HookShellTailArgs),
+    /// Print the bash prompt hook script (or `install --write-rc` / `uninstall`)
+    Bash(HookShellTailArgs),
+    /// Print the fish prompt hook script (or `install --write-rc` / `uninstall`)
+    Fish(HookShellTailArgs),
+    /// Install the marked hook block into the shell rc file (requires `--write-rc`)
+    Install(HookInstallArgs),
+    /// Remove the marked hook block from the shell rc file
+    Uninstall(HookUninstallArgs),
+}
+
+#[derive(Args, Debug)]
+struct HookShellTailArgs {
+    #[command(subcommand)]
+    action: Option<HookShellAction>,
+}
+
+#[derive(Subcommand, Debug)]
+enum HookShellAction {
+    /// Install the marked hook block into this shell's rc file (requires `--write-rc`)
+    Install(HookActionFlags),
+    /// Remove the marked hook block from this shell's rc file
+    Uninstall(HookActionFlags),
+}
+
+#[derive(Args, Debug)]
+struct HookActionFlags {
+    /// Explicitly authorize editing the shell rc file (with `.bak` backup)
+    #[arg(long)]
+    write_rc: bool,
+
+    /// Optional custom rc file path override
+    #[arg(long)]
+    rc_file: Option<PathBuf>,
+}
+
+#[derive(Args, Debug)]
+struct HookInstallArgs {
+    /// Target shell (`zsh`, `bash`, or `fish`; defaults to `$SHELL`)
+    #[arg(value_enum, conflicts_with = "shell_flag")]
+    shell: Option<HookShell>,
+
+    /// Target shell (`zsh`, `bash`, or `fish`; defaults to `$SHELL`)
+    #[arg(long = "shell", value_enum)]
+    shell_flag: Option<HookShell>,
+
+    /// Explicitly authorize editing the shell rc file (with `.bak` backup)
+    #[arg(long)]
+    write_rc: bool,
+
+    /// Optional custom rc file path override
+    #[arg(long)]
+    rc_file: Option<PathBuf>,
+}
+
+#[derive(Args, Debug)]
+struct HookUninstallArgs {
+    /// Target shell (`zsh`, `bash`, or `fish`; defaults to `$SHELL`)
+    #[arg(value_enum, conflicts_with = "shell_flag")]
+    shell: Option<HookShell>,
+
+    /// Target shell (`zsh`, `bash`, or `fish`; defaults to `$SHELL`)
+    #[arg(long = "shell", value_enum)]
+    shell_flag: Option<HookShell>,
+
+    /// Accepted for symmetry with `install --write-rc`
+    #[arg(long)]
+    write_rc: bool,
+
+    /// Optional custom rc file path override
+    #[arg(long)]
+    rc_file: Option<PathBuf>,
+}
+
+#[derive(Args, Debug)]
+struct EmitArgs {
+    /// Recompute at most once per `hook_min_interval_secs`
+    #[arg(long)]
+    if_stale: bool,
+
+    /// Optional RFC 3339 or `HH:MM[:SS]` moment override for deterministic simulation
+    #[arg(long)]
+    time: Option<String>,
+}
+
 fn polar_state_str(state: PolarState) -> &'static str {
     match state {
         PolarState::Normal => "normal",
@@ -308,7 +412,7 @@ fn run_apply(args: ApplyArgs) -> Result<(), String> {
     let snapshot = Snapshot::from_frame(palette.name(), &frame, coords, &model);
     let osc_bytes = encode_osc_frame(&frame.colors);
 
-    persist_applied_frame(&paths, palette.name(), &snapshot, &osc_bytes)
+    persist_applied_frame_at(&paths, palette.name(), &snapshot, &osc_bytes, now_utc)
         .map_err(|e| e.to_string())?;
 
     let stdout = io::stdout();
@@ -517,6 +621,86 @@ fn run_palette_check(args: PaletteCheckArgs) -> Result<String, String> {
     Ok(format_palette_check_report(&report))
 }
 
+fn execute_hook_install(
+    shell: HookShell,
+    write_rc: bool,
+    rc_override: Option<PathBuf>,
+) -> Result<String, String> {
+    let rc_path = match rc_override {
+        Some(path) => path,
+        None => shell.default_rc_path()?,
+    };
+    if !write_rc {
+        let snippet = preview_rc_block(shell);
+        return Err(format!(
+            "refusing to edit {} without `--write-rc`; pass `{} hook {shell} install --write-rc` or add manually:\n\n{snippet}",
+            rc_path.display(),
+            product::CLI_BIN
+        ));
+    }
+    install_hook_to_rc(shell, &rc_path)
+}
+
+fn execute_hook_uninstall(
+    shell: HookShell,
+    rc_override: Option<PathBuf>,
+) -> Result<String, String> {
+    let rc_path = match rc_override {
+        Some(path) => path,
+        None => shell.default_rc_path()?,
+    };
+    uninstall_hook_from_rc(shell, &rc_path)
+}
+
+fn handle_shell_tail(shell: HookShell, tail: HookShellTailArgs) -> Result<String, String> {
+    match tail.action {
+        None => Ok(render_hook_script(shell)),
+        Some(HookShellAction::Install(flags)) => {
+            execute_hook_install(shell, flags.write_rc, flags.rc_file)
+        }
+        Some(HookShellAction::Uninstall(flags)) => {
+            let _ = flags.write_rc;
+            execute_hook_uninstall(shell, flags.rc_file)
+        }
+    }
+}
+
+fn run_hook(args: HookArgs) -> Result<String, String> {
+    match args.command {
+        HookCommand::Zsh(tail) => handle_shell_tail(HookShell::Zsh, tail),
+        HookCommand::Bash(tail) => handle_shell_tail(HookShell::Bash, tail),
+        HookCommand::Fish(tail) => handle_shell_tail(HookShell::Fish, tail),
+        HookCommand::Install(inst) => {
+            let shell = match inst.shell.or(inst.shell_flag) {
+                Some(sh) => sh,
+                None => HookShell::detect_from_env()?,
+            };
+            execute_hook_install(shell, inst.write_rc, inst.rc_file)
+        }
+        HookCommand::Uninstall(uninst) => {
+            let _ = uninst.write_rc;
+            let shell = match uninst.shell.or(uninst.shell_flag) {
+                Some(sh) => sh,
+                None => HookShell::detect_from_env()?,
+            };
+            execute_hook_uninstall(shell, uninst.rc_file)
+        }
+    }
+}
+
+fn run_emit(args: EmitArgs) -> Result<(), String> {
+    let paths = ShikiPaths::resolve().map_err(|e| e.to_string())?;
+    refresh_hook_store(
+        &paths,
+        args.if_stale,
+        args.time.as_deref(),
+        SystemClock.now(),
+        encode_osc_frame,
+    )
+    .map(|_| ())
+    .map_err(|e| e.to_string())
+}
+
 fn print_result<E: std::fmt::Display>(res: Result<String, E>) -> ExitCode {
     match res {
         Ok(out) => {
@@ -554,6 +738,14 @@ fn main() -> ExitCode {
         Some(Commands::Locate(args)) => print_result(run_locate(args)),
         Some(Commands::Palette(palette_args)) => match palette_args.command {
             PaletteCommand::Check(args) => print_result(run_palette_check(args)),
+        },
+        Some(Commands::Hook(args)) => print_result(run_hook(args)),
+        Some(Commands::Emit(args)) => match run_emit(args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(err) => {
+                eprintln!("error: {err}");
+                ExitCode::FAILURE
+            }
         },
     }
 }

@@ -12,6 +12,7 @@ use rustix::fs::{fcntl_getfl, fcntl_setfl, open, Mode, OFlags};
 use rustix::io::{fcntl_setfd, Errno, FdFlags};
 use rustix::pty::{grantpt, openpt, ptsname, unlockpt, OpenptFlags};
 use rustix::termios::{tcgetattr, tcsetattr, tcsetwinsize, OptionalActions, Winsize};
+use std::cell::RefCell;
 use std::ffi::OsStr;
 use std::io;
 use std::os::unix::ffi::OsStrExt;
@@ -71,6 +72,7 @@ pub struct PtyPair {
     controller: OwnedFd,
     replica: Option<OwnedFd>,
     replica_path: PathBuf,
+    rx_buf: RefCell<Vec<u8>>,
 }
 
 impl PtyPair {
@@ -124,6 +126,7 @@ impl PtyPair {
             controller,
             replica: Some(replica),
             replica_path,
+            rx_buf: RefCell::new(Vec::new()),
         })
     }
 
@@ -154,39 +157,52 @@ impl PtyPair {
     }
 
     pub fn read_exact_with_timeout(&self, len: usize, timeout: Duration) -> io::Result<Vec<u8>> {
-        let mut out = Vec::with_capacity(len);
+        let mut out = std::mem::take(&mut *self.rx_buf.borrow_mut());
+        if out.len() < len {
+            out.reserve(len - out.len());
+        }
         self.read_loop(timeout, &mut out, |buf| buf.len() >= len)?;
         if out.len() < len {
+            let captured = out.len();
+            *self.rx_buf.borrow_mut() = out;
             return Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
-                format!(
-                    "PTY reached EOF after {} of {len} expected bytes",
-                    out.len()
-                ),
+                format!("PTY reached EOF after {captured} of {len} expected bytes"),
             ));
         }
-        out.truncate(len);
+        let remainder = out.split_off(len);
+        *self.rx_buf.borrow_mut() = remainder;
         Ok(out)
     }
 
     pub fn read_until(&self, needle: &[u8], timeout: Duration) -> io::Result<Vec<u8>> {
         assert!(!needle.is_empty(), "read_until needle must not be empty");
-        let mut out = Vec::new();
+        let mut out = std::mem::take(&mut *self.rx_buf.borrow_mut());
         self.read_loop(timeout, &mut out, |buf| {
             buf.windows(needle.len()).any(|window| window == needle)
         })?;
-        if !out.windows(needle.len()).any(|window| window == needle) {
+        let Some(pos) = out
+            .windows(needle.len())
+            .position(|window| window == needle)
+        else {
             return Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
-                "PTY reached EOF before needle appeared",
+                format!(
+                    "PTY reached EOF before needle appeared (captured {} bytes: {:?})",
+                    out.len(),
+                    String::from_utf8_lossy(&out)
+                ),
             ));
-        }
+        };
+        let split_at = pos + needle.len();
+        let remainder = out.split_off(split_at);
+        *self.rx_buf.borrow_mut() = remainder;
         Ok(out)
     }
 
     pub fn read_to_eof(&mut self, timeout: Duration) -> io::Result<Vec<u8>> {
         self.close_replica();
-        let mut out = Vec::new();
+        let mut out = std::mem::take(self.rx_buf.get_mut());
         self.read_loop(timeout, &mut out, |_| false)?;
         Ok(out)
     }
@@ -283,6 +299,59 @@ impl PtyPair {
 
         let child = cmd.spawn()?;
         Ok(PtyChild { child: Some(child) })
+    }
+
+    /// Spawns `cmd` as the leader of a new POSIX session (`setsid`) with the PTY replica attached
+    /// as its controlling terminal (`TIOCSCTTY`), required by interactive shells like `fish` whose
+    /// job-control startup checks `tcgetpgrp(STDIN_FILENO)`.
+    ///
+    /// Uses `setsid -w -c` on Linux (`util-linux`) or `python3` (`os.setsid` + `TIOCSCTTY` +
+    /// `os.execv`) on macOS so workspace crates stay 100% free of `unsafe` (`pre_exec`).
+    pub fn spawn_session_command(&mut self, cmd: Command) -> io::Result<PtyChild> {
+        let setsid_candidate = ["/usr/bin/setsid", "/bin/setsid"]
+            .into_iter()
+            .map(PathBuf::from)
+            .find(|p| p.is_file());
+
+        let mut wrapped = if let Some(setsid_bin) = setsid_candidate {
+            let mut c = Command::new(setsid_bin);
+            c.args(["-w", "-c"]).arg(cmd.get_program());
+            c.args(cmd.get_args());
+            c
+        } else {
+            let py_bin = ["/usr/bin/python3", "/opt/homebrew/bin/python3"]
+                .into_iter()
+                .map(PathBuf::from)
+                .find(|p| p.is_file())
+                .unwrap_or_else(|| PathBuf::from("python3"));
+            let mut c = Command::new(py_bin);
+            c.args([
+                "-c",
+                "import fcntl, os, sys, termios; os.setsid(); fcntl.ioctl(0, termios.TIOCSCTTY, 0); os.execv(sys.argv[1], sys.argv[1:])",
+            ])
+            .arg(cmd.get_program());
+            c.args(cmd.get_args());
+            c
+        };
+
+        if cmd.get_envs().next().is_some() {
+            wrapped.env_clear();
+        }
+        for (key, val) in cmd.get_envs() {
+            match val {
+                Some(v) => {
+                    wrapped.env(key, v);
+                }
+                None => {
+                    wrapped.env_remove(key);
+                }
+            }
+        }
+        if let Some(dir) = cmd.get_current_dir() {
+            wrapped.current_dir(dir);
+        }
+
+        self.spawn_command(wrapped)
     }
 }
 

@@ -14,8 +14,8 @@ fn next_temp_path(parent: &Path, base_name: &str) -> PathBuf {
     parent.join(format!(".{base_name}.tmp.{pid}.{seq}"))
 }
 
-/// Atomically writes `bytes` to `target` via a sibling temporary file, `sync_all()` (`fsync`),
-/// and `rename()`, enforcing `0o600` owner-only permissions on Unix.
+/// Atomically writes `bytes` to `target` via a sibling temporary file, POSIX `fsync`, and
+/// `rename()`, enforcing `0o600` owner-only permissions on Unix.
 pub fn atomic_write(target: &Path, bytes: &[u8]) -> Result<(), StoreError> {
     let parent = target.parent().ok_or_else(|| {
         io::Error::new(
@@ -50,6 +50,9 @@ pub fn atomic_write(target: &Path, bytes: &[u8]) -> Result<(), StoreError> {
 
     let write_and_sync = (|| -> io::Result<()> {
         file.write_all(bytes)?;
+        #[cfg(unix)]
+        rustix::fs::fsync(&file).map_err(|e| io::Error::from_raw_os_error(e.raw_os_error()))?;
+        #[cfg(not(unix))]
         file.sync_all()?;
         Ok(())
     })();
@@ -68,7 +71,7 @@ pub fn atomic_write(target: &Path, bytes: &[u8]) -> Result<(), StoreError> {
 
     #[cfg(unix)]
     if let Ok(dir) = fs::File::open(parent) {
-        let _ = dir.sync_all();
+        let _ = rustix::fs::fsync(&dir);
     }
 
     Ok(())

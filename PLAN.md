@@ -160,7 +160,7 @@ Tick `[x]` when done. **M1 is the MVP**: new prompts drift via the hook. Everyth
   *AC:* property tests pass over a year at 10-minute steps in both hemispheres. `palette check` prints the worst moment.
 - [x] **T07 OSC & CLI core.** Encoder, `apply`, `reset`, `now`, `preview` (swatches + sample text, 256-colour fallback, `NO_COLOR`), `config`, store.
   *AC:* golden OSC bytes. `preview` never emits OSC 4/10/11. `reset` emits 104/110/111/112.
-- [ ] **T08 Shell hook (MVP release).** `hook zsh|bash|fish`, `_emit --if-stale`, generation file, `hook install --write-rc`/`uninstall`.
+- [x] **T08 Shell hook (MVP release).** `hook zsh|bash|fish`, `_emit --if-stale`, generation file, `hook install --write-rc`/`uninstall`.
   *AC:* real shells emit on the first prompt and afterwards only on change. The rc round-trips byte for byte. Latency measured. `v0.1.0` builds.
 
 ### M2 Every session, cheaply

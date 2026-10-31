@@ -102,3 +102,47 @@ fn pty_pair_passes_100x_in_a_loop_without_fd_leaks() {
         assert!(eof.is_empty());
     }
 }
+
+#[test]
+fn pty_pair_spawn_session_command_attaches_controlling_terminal() {
+    let mut pair = PtyPair::open_raw().expect("open raw PTY pair");
+    let mut cmd = Command::new("/bin/sh");
+    cmd.args(["-c", "printf 'ctty-attached' >/dev/tty"]);
+
+    let mut child = pair
+        .spawn_session_command(cmd)
+        .expect("spawn session leader with controlling terminal");
+    let output = pair
+        .read_to_eof(TIMEOUT)
+        .expect("read /dev/tty output from PTY controller");
+    let status = child
+        .wait_with_timeout(TIMEOUT)
+        .expect("wait for session child");
+
+    assert!(status.success(), "session child exited with {status}");
+    assert_eq!(
+        String::from_utf8(output).expect("UTF-8 /dev/tty output"),
+        "ctty-attached"
+    );
+}
+
+#[test]
+fn pty_pair_consecutive_read_until_preserves_trailing_bytes_from_single_write() {
+    let mut pair = PtyPair::open_raw().expect("open raw PTY pair");
+    pair.write_to_replica(b"<STEP2>\n\x1b]11;rgb:14/16/1b\x1b\\<<SHIKI_PROMPT:0>> ")
+        .expect("single coalesced write to replica");
+
+    let step = pair
+        .read_until(b"<STEP2>", TIMEOUT)
+        .expect("read step barrier");
+    assert_eq!(step, b"<STEP2>");
+
+    let prompt = pair
+        .read_until(b"<<SHIKI_PROMPT:0>> ", TIMEOUT)
+        .expect("read buffered prompt bytes from same write");
+    assert_eq!(prompt, b"\n\x1b]11;rgb:14/16/1b\x1b\\<<SHIKI_PROMPT:0>> ");
+
+    pair.close_replica();
+    let eof = pair.read_to_eof(TIMEOUT).expect("drain EOF");
+    assert!(eof.is_empty());
+}
