@@ -166,7 +166,7 @@ Tick `[x]` when done. **M1 is the MVP**: new prompts drift via the hook. Everyth
 ### M2 Every session, cheaply
 - [x] **T09 Daemon & scheduler.** Predicted-step sleep, `pause`/`resume`, launchd/systemd user units *(verify paths)*.
   *AC:* a fake-clock day's wakes respect §7. No writes when unchanged. Install/uninstall round-trips.
-- [ ] **T10 tty broadcast & tmux.** Enumerate the uid's ttys, single-write delivery, tmux passthrough option.
+- [x] **T10 tty broadcast & tmux.** Enumerate the uid's ttys, single-write delivery, tmux passthrough option.
   *AC:* a pty pair gets the exact bytes. Other users' ttys are never opened. A tmux pane's colour changes.
 - [ ] **T11 Native backends.** kitty socket + scoped password; WezTerm, Alacritty and Ghostty includes; `backend enable --write-config`.
   *AC:* golden files. Install/uninstall round-trips. A matrix row per terminal.

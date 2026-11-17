@@ -2,13 +2,17 @@
 
 pub mod error;
 pub mod osc;
+#[cfg(unix)]
+pub mod tmux;
+#[cfg(unix)]
+pub mod tty;
 
-use error::DeliverError;
+pub use error::DeliverError;
 use sk_core::palette::Frame;
 
 /// Common delivery interface across OSC, tty broadcast, tmux, and native terminal backends.
 pub trait Backend {
-    /// Short backend identifier (e.g. `"osc"`, `"tty-broadcast"`, `"kitty"`).
+    /// Short backend identifier (e.g. `"osc"`, `"tty-broadcast"`, `"tmux"`, `"kitty"`).
     fn name(&self) -> &'static str;
 
     /// Delivers a contrast-verified [`Frame`] to the target terminal(s).

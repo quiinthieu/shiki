@@ -1,0 +1,7 @@
+---
+source: crates/shiki-term/tests/tty_tmux_cli.rs
+expression: default_text
+---
+osc: always available (apply, reset, shell hook)
+tty-broadcast: disabled (delivery.tty_broadcast = false)
+tmux: disabled (delivery.tmux = false, delivery.tmux_passthrough = false)
