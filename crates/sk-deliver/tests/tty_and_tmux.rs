@@ -388,15 +388,16 @@ fn tmux_dcs_passthrough_and_combined_payloads_match_golden_snapshots() {
     );
 
     let combined_frame = encode_tmux_frame(&dawn_frame.colors, true);
-    assert_eq!(combined_frame.len(), raw_frame.len() + dcs_frame.len());
-    assert!(combined_frame.starts_with(&raw_frame));
-    assert_eq!(&combined_frame[raw_frame.len()..], dcs_frame.as_slice());
+    assert_eq!(combined_frame.len(), dcs_frame.len() + raw_frame.len());
+    assert!(combined_frame.starts_with(&dcs_frame));
+    assert_eq!(&combined_frame[dcs_frame.len()..], raw_frame.as_slice());
 
     let combined_reset = encode_tmux_reset(true);
     let dcs_reset = encode_tmux_dcs_passthrough(&raw_reset);
-    assert_eq!(combined_reset.len(), raw_reset.len() + dcs_reset.len());
+    assert_eq!(combined_reset.len(), dcs_reset.len() + raw_reset.len());
+    assert_eq!(&combined_reset[dcs_reset.len()..], raw_reset.as_slice());
     assert_eq!(
-        decode_tmux_dcs_passthrough(&combined_reset[raw_reset.len()..]).as_deref(),
+        decode_tmux_dcs_passthrough(&combined_reset[..dcs_reset.len()]).as_deref(),
         Some(raw_reset.as_slice())
     );
 
@@ -617,7 +618,7 @@ fn real_tmux_pane_changes_colour_and_forwards_dcs_passthrough() {
         .expect("spawn isolated tmux client + server on outer PTY");
 
     outer_pty
-        .write_input(b"PS1=''; printf 'SHIKI_TMUX_READY\\n'\n")
+        .write_input(b"PS1=''; printf 'SHIKI_%s\\n' 'TMUX_READY'\n")
         .expect("send ready marker command to tmux pane");
     let _startup = outer_pty
         .read_until(b"SHIKI_TMUX_READY", Duration::from_secs(10))
@@ -644,7 +645,7 @@ fn real_tmux_pane_changes_colour_and_forwards_dcs_passthrough() {
     // so tmux renders the updated per-pane palette (`wp->palette`) onto `outer_pty`.
     guard.run_ctl(&["refresh-client"]);
     outer_pty
-        .write_input(b"printf '\\033[31mSHIKI_PHASE_ONE_DONE\\033[0m\\n'\n")
+        .write_input(b"printf '\\033[31mSHIKI_%s\\033[0m\\n' 'PHASE_ONE_DONE'\n")
         .expect("print marker after per-pane OSC delivery");
     let phase1_out = outer_pty
         .read_until(b"SHIKI_PHASE_ONE_DONE", Duration::from_secs(10))
@@ -682,7 +683,7 @@ fn real_tmux_pane_changes_colour_and_forwards_dcs_passthrough() {
 
     guard.run_ctl(&["refresh-client"]);
     outer_pty
-        .write_input(b"printf 'SHIKI_PHASE_TWO_DONE\\n'\n")
+        .write_input(b"printf 'SHIKI_%s\\n' 'PHASE_TWO_DONE'\n")
         .expect("print marker after DCS passthrough delivery");
     let phase2_out = outer_pty
         .read_until(b"SHIKI_PHASE_TWO_DONE", Duration::from_secs(10))
@@ -719,7 +720,7 @@ fn real_tmux_pane_changes_colour_and_forwards_dcs_passthrough() {
         .expect("deliver tmux reset with passthrough");
     assert_eq!(reset_report.delivered, 1);
     outer_pty
-        .write_input(b"printf 'SHIKI_PHASE_THREE_DONE\\n'\n")
+        .write_input(b"printf 'SHIKI_%s\\n' 'PHASE_THREE_DONE'\n")
         .expect("print marker after tmux reset");
     let phase3_out = outer_pty
         .read_until(b"SHIKI_PHASE_THREE_DONE", Duration::from_secs(10))

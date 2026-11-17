@@ -61,31 +61,37 @@ pub fn decode_tmux_dcs_passthrough(dcs: &[u8]) -> Option<Vec<u8>> {
 }
 
 /// Encodes a colour frame for a `tmux` pane tty (`docs/terminals/tmux.md`):
-/// - Always begins with raw `OSC 11/10/12` + `OSC 4;0..15` (`383` bytes) so `tmux` 3.3+ updates its
-///   own per-pane `wp->palette` even when `allow-passthrough` is `off`.
-/// - When `passthrough_outer` is `true`, appends the DCS passthrough envelope (`430` bytes) into
-///   the **same single buffer** (`813` bytes total) so one `write(2)` updates both the `tmux` pane
-///   and the outer terminal emulator (when `allow-passthrough` is `on` or `all`).
+/// - When `passthrough_outer` is `false`, emits raw `OSC 11/10/12` + `OSC 4;0..15` (`383` bytes)
+///   so `tmux` 3.3+ updates its own per-pane `wp->palette` even when `allow-passthrough` is `off`.
+/// - When `passthrough_outer` is `true`, places the DCS passthrough envelope (`430` bytes)
+///   **before** the raw OSC segment (`383` bytes) in the **same single buffer** (`813` bytes
+///   total) so `tmux`'s `input_dcs_dispatch` forwards the unwrapped OSC sequence to the outer
+///   terminal before `input_osc_11`/`input_osc_4` sets `PANE_REDRAW` on the pane.
 #[must_use]
 pub fn encode_tmux_frame(colors: &PaletteColors, passthrough_outer: bool) -> Vec<u8> {
-    let mut raw = encode_osc_frame(colors);
+    let raw = encode_osc_frame(colors);
     if passthrough_outer {
-        let dcs = encode_tmux_dcs_passthrough(&raw);
-        raw.extend_from_slice(&dcs);
+        let mut out = encode_tmux_dcs_passthrough(&raw);
+        out.extend_from_slice(&raw);
+        out
+    } else {
+        raw
     }
-    raw
 }
 
-/// Encodes a palette reset (`OSC 104/110/111/112`) for a `tmux` pane tty, optionally appending the
-/// `tmux` DCS passthrough envelope into the same single-write buffer (`73` bytes total).
+/// Encodes a palette reset (`OSC 104/110/111/112`) for a `tmux` pane tty, optionally prepending
+/// the `tmux` DCS passthrough envelope into the same single-write buffer (`73` bytes total) before
+/// the raw reset segment sets `PANE_REDRAW`.
 #[must_use]
 pub fn encode_tmux_reset(passthrough_outer: bool) -> Vec<u8> {
-    let mut raw = encode_osc_reset();
+    let raw = encode_osc_reset();
     if passthrough_outer {
-        let dcs = encode_tmux_dcs_passthrough(&raw);
-        raw.extend_from_slice(&dcs);
+        let mut out = encode_tmux_dcs_passthrough(&raw);
+        out.extend_from_slice(&raw);
+        out
+    } else {
+        raw
     }
-    raw
 }
 
 /// Discovers active `tmux` pane pseudo-terminal paths (`#{pane_tty}`).
